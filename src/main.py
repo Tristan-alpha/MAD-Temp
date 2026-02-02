@@ -65,6 +65,11 @@ def get_args():
     parser.add_argument('--bae', action='store_true', help="base answer extractor")
     parser.add_argument('--cot', action='store_true')
 
+    # experiments
+    parser.add_argument('--target_round', type=int, default=-1, help="Round index to modify temperature (0-indexed). 0=Initial, 1=First Debate Round, etc.")
+    parser.add_argument('--target_agent_idx', type=int, default=0, help="Agent index to modify temperature")
+    parser.add_argument('--target_temp', type=float, default=1.0, help="Temperature for the target agent in target round")
+
 
     return parser.parse_args()
 
@@ -150,6 +155,9 @@ def main(args):
     if args.bae : fname += '_BAE'
     if args.multi_persona : fname += '_HETERO'
 
+    if args.target_round != -1:
+        fname += f"_TR={args.target_round}_TA={args.target_agent_idx}_TT={args.target_temp}"
+
     agent_names = []
     for i in range(args.num_agents):
         for persona in personas.keys():
@@ -193,7 +201,13 @@ def main(args):
                 messages.append([{"role": "system", "content": sys},{"role": "user", "content": x + SUFFIX}])
         else:
             messages = [{"role": "user", "content": x + SUFFIX}] * args.num_agents
-        responses = engine(messages, agent, args.num_agents)
+        
+        # Determine temperatures for Round 0
+        temperatures = [1.0] * args.num_agents
+        if args.target_round == 0:
+            temperatures[args.target_agent_idx] = args.target_temp
+
+        responses = engine(messages, agent, args.num_agents, temperatures=temperatures)
         agent_responses = dict(zip(agent_names, responses))
 
         # evaluate
@@ -237,7 +251,13 @@ def main(args):
             else:
                 new_agent_messages = get_new_message(args, x, agent_responses, suffix=SUFFIX)
             messages = list(new_agent_messages.values())
-            responses = engine(messages, agent, args.num_agents)
+
+            # Determine temperatures for Round r
+            temperatures = [1.0] * args.num_agents
+            if args.target_round == r:
+                temperatures[args.target_agent_idx] = args.target_temp
+
+            responses = engine(messages, agent, args.num_agents, temperatures=temperatures)
             agent_responses = dict(zip(agent_names, responses))
 
             # evaluate
@@ -247,8 +267,8 @@ def main(args):
             else :
                 final_resps, debate_resps, is_corr = evaluate(agent_responses, y)
 
-            print("\n\n" + str(messages[0]) + "\n\n")
-            print(f"ROUND {r} : {final_resps} (answer = {y})")
+            # print("\n\n" + str(messages[0]) + "\n\n")
+            # print(f"ROUND {r} : {final_resps} (answer = {y})")
             if args.data in ['arithmetics','gsm8k']:
                 round_data = {
                     'responses': agent_responses,
@@ -290,6 +310,7 @@ def main(args):
         iscorr_list.append(round_iscorr)
 
         # Save to jsonl
+        print("")
         print(len(sample_responses))
         with open(f'out/history/{fname}.jsonl', 'w') as f:
             for record in sample_responses:
