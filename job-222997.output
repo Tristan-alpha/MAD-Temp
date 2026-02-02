@@ -1,0 +1,1036 @@
+Running experiment with Variant Temperature: 0.5
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:03,  1.24s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:02<00:02,  1.21s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:03<00:01,  1.20s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.16s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.18s/it]
+Device set to use cuda:0
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+WARNING:datasets.load:Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+WARNING:datasets.packaged_modules.cache.cache:Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+  0%|          | 0/50 [00:00<?, ?it/s]1
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  2%|▏         | 1/50 [02:20<1:55:06, 140.96s/it]2
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  4%|▍         | 2/50 [04:17<1:41:25, 126.78s/it]3
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  6%|▌         | 3/50 [06:23<1:38:47, 126.12s/it]4
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  8%|▊         | 4/50 [07:53<1:25:52, 112.01s/it]5
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 10%|█         | 5/50 [10:01<1:28:12, 117.61s/it]6
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 12%|█▏        | 6/50 [13:07<1:43:20, 140.92s/it]7
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 14%|█▍        | 7/50 [15:40<1:43:57, 145.06s/it]8
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 16%|█▌        | 8/50 [17:53<1:38:42, 141.01s/it]9
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 18%|█▊        | 9/50 [20:36<1:41:04, 147.92s/it]10
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 20%|██        | 10/50 [22:23<1:30:16, 135.41s/it]11
+Round 0 Acc.: 0.8182
+Round 1 Acc.: 0.9091
+Round 2 Acc.: 0.9091
+Round 3 Acc.: 0.9091
+ 22%|██▏       | 11/50 [25:07<1:33:36, 144.02s/it]12
+Round 0 Acc.: 0.8333
+Round 1 Acc.: 0.9167
+Round 2 Acc.: 0.9167
+Round 3 Acc.: 0.9167
+ 24%|██▍       | 12/50 [26:13<1:16:19, 120.51s/it]13
+Round 0 Acc.: 0.8462
+Round 1 Acc.: 0.9231
+Round 2 Acc.: 0.9231
+Round 3 Acc.: 0.9231
+ 26%|██▌       | 13/50 [27:30<1:06:04, 107.15s/it]14
+Round 0 Acc.: 0.8571
+Round 1 Acc.: 0.9286
+Round 2 Acc.: 0.9286
+Round 3 Acc.: 0.9286
+ 28%|██▊       | 14/50 [30:22<1:16:07, 126.89s/it]15
+Round 0 Acc.: 0.8667
+Round 1 Acc.: 0.9333
+Round 2 Acc.: 0.9333
+Round 3 Acc.: 0.9333
+ 30%|███       | 15/50 [33:05<1:20:14, 137.56s/it]16
+Round 0 Acc.: 0.8750
+Round 1 Acc.: 0.9375
+Round 2 Acc.: 0.9375
+Round 3 Acc.: 0.9375
+ 32%|███▏      | 16/50 [35:18<1:17:18, 136.43s/it]17
+Round 0 Acc.: 0.8824
+Round 1 Acc.: 0.9412
+Round 2 Acc.: 0.9412
+Round 3 Acc.: 0.8824
+ 34%|███▍      | 17/50 [36:38<1:05:40, 119.41s/it]18
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 0.9444
+Round 2 Acc.: 0.9444
+Round 3 Acc.: 0.8889
+ 36%|███▌      | 18/50 [39:14<1:09:30, 130.34s/it]19
+Round 0 Acc.: 0.8947
+Round 1 Acc.: 0.9474
+Round 2 Acc.: 0.9474
+Round 3 Acc.: 0.8947
+ 38%|███▊      | 19/50 [41:31<1:08:26, 132.46s/it]20
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.9500
+Round 2 Acc.: 0.9500
+Round 3 Acc.: 0.9000
+ 40%|████      | 20/50 [43:45<1:06:23, 132.78s/it]21
+Round 0 Acc.: 0.8571
+Round 1 Acc.: 0.9524
+Round 2 Acc.: 0.9524
+Round 3 Acc.: 0.9048
+ 42%|████▏     | 21/50 [46:37<1:09:52, 144.57s/it]22
+Round 0 Acc.: 0.8636
+Round 1 Acc.: 0.9545
+Round 2 Acc.: 0.9545
+Round 3 Acc.: 0.9091
+ 44%|████▍     | 22/50 [49:12<1:08:55, 147.68s/it]23
+Round 0 Acc.: 0.8696
+Round 1 Acc.: 0.9565
+Round 2 Acc.: 0.9565
+Round 3 Acc.: 0.9130
+ 46%|████▌     | 23/50 [51:40<1:06:26, 147.64s/it]24
+Round 0 Acc.: 0.8750
+Round 1 Acc.: 0.9583
+Round 2 Acc.: 0.9583
+Round 3 Acc.: 0.9167
+ 48%|████▊     | 24/50 [54:33<1:07:21, 155.44s/it]25
+Round 0 Acc.: 0.8800
+Round 1 Acc.: 0.9600
+Round 2 Acc.: 0.9600
+Round 3 Acc.: 0.9200
+ 50%|█████     | 25/50 [56:29<59:50, 143.60s/it]  26
+Round 0 Acc.: 0.8846
+Round 1 Acc.: 0.9615
+Round 2 Acc.: 0.9615
+Round 3 Acc.: 0.9231
+ 52%|█████▏    | 26/50 [59:25<1:01:21, 153.41s/it]27
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 0.9630
+Round 2 Acc.: 0.9630
+Round 3 Acc.: 0.8889
+ 54%|█████▍    | 27/50 [1:00:58<51:47, 135.11s/it]28
+Round 0 Acc.: 0.8929
+Round 1 Acc.: 0.9643
+Round 2 Acc.: 0.9643
+Round 3 Acc.: 0.8929
+ 56%|█████▌    | 28/50 [1:03:04<48:34, 132.48s/it]29
+Round 0 Acc.: 0.8966
+Round 1 Acc.: 0.9655
+Round 2 Acc.: 0.9655
+Round 3 Acc.: 0.8966
+ 58%|█████▊    | 29/50 [1:04:50<43:35, 124.53s/it]30
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.9667
+Round 2 Acc.: 0.9667
+Round 3 Acc.: 0.9000
+ 60%|██████    | 30/50 [1:06:03<36:19, 108.96s/it]31
+Round 0 Acc.: 0.9032
+Round 1 Acc.: 0.9677
+Round 2 Acc.: 0.9677
+Round 3 Acc.: 0.9032
+ 62%|██████▏   | 31/50 [1:08:31<38:12, 120.64s/it]32
+Round 0 Acc.: 0.9062
+Round 1 Acc.: 0.9688
+Round 2 Acc.: 0.9688
+Round 3 Acc.: 0.9062
+ 64%|██████▍   | 32/50 [1:10:21<35:18, 117.68s/it]33
+Round 0 Acc.: 0.9091
+Round 1 Acc.: 0.9697
+Round 2 Acc.: 0.9697
+Round 3 Acc.: 0.9091
+ 66%|██████▌   | 33/50 [1:11:50<30:51, 108.91s/it]34
+Round 0 Acc.: 0.9118
+Round 1 Acc.: 0.9706
+Round 2 Acc.: 0.9706
+Round 3 Acc.: 0.9118
+ 68%|██████▊   | 34/50 [1:13:49<29:53, 112.09s/it]35
+Round 0 Acc.: 0.9143
+Round 1 Acc.: 0.9714
+Round 2 Acc.: 0.9714
+Round 3 Acc.: 0.9143
+ 70%|███████   | 35/50 [1:16:07<29:58, 119.88s/it]36
+Round 0 Acc.: 0.9167
+Round 1 Acc.: 0.9722
+Round 2 Acc.: 0.9722
+Round 3 Acc.: 0.9167
+ 72%|███████▏  | 36/50 [1:18:20<28:49, 123.53s/it]37
+Round 0 Acc.: 0.9189
+Round 1 Acc.: 0.9730
+Round 2 Acc.: 0.9730
+Round 3 Acc.: 0.9189
+ 74%|███████▍  | 37/50 [1:20:01<25:19, 116.89s/it]38
+Round 0 Acc.: 0.8947
+Round 1 Acc.: 0.9474
+Round 2 Acc.: 0.9737
+Round 3 Acc.: 0.9211
+ 76%|███████▌  | 38/50 [1:22:37<25:45, 128.77s/it]39
+Round 0 Acc.: 0.8974
+Round 1 Acc.: 0.9487
+Round 2 Acc.: 0.9744
+Round 3 Acc.: 0.9231
+ 78%|███████▊  | 39/50 [1:24:56<24:07, 131.62s/it]40
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.9500
+Round 2 Acc.: 0.9750
+Round 3 Acc.: 0.9250
+ 80%|████████  | 40/50 [1:26:26<19:53, 119.34s/it]41
+Round 0 Acc.: 0.9024
+Round 1 Acc.: 0.9512
+Round 2 Acc.: 0.9756
+Round 3 Acc.: 0.9268
+ 82%|████████▏ | 41/50 [1:28:48<18:53, 125.91s/it]42
+Round 0 Acc.: 0.9048
+Round 1 Acc.: 0.9524
+Round 2 Acc.: 0.9762
+Round 3 Acc.: 0.9286
+ 84%|████████▍ | 42/50 [1:31:24<18:01, 135.18s/it]43
+Round 0 Acc.: 0.9070
+Round 1 Acc.: 0.9535
+Round 2 Acc.: 0.9767
+Round 3 Acc.: 0.9302
+ 86%|████████▌ | 43/50 [1:33:06<14:36, 125.20s/it]44
+Round 0 Acc.: 0.8864
+Round 1 Acc.: 0.9545
+Round 2 Acc.: 0.9773
+Round 3 Acc.: 0.9318
+ 88%|████████▊ | 44/50 [1:35:28<13:00, 130.10s/it]45
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 0.9556
+Round 2 Acc.: 0.9778
+Round 3 Acc.: 0.9333
+ 90%|█████████ | 45/50 [1:37:44<10:59, 131.85s/it]46
+Round 0 Acc.: 0.8913
+Round 1 Acc.: 0.9565
+Round 2 Acc.: 0.9565
+Round 3 Acc.: 0.9348
+ 92%|█████████▏| 46/50 [1:40:43<09:43, 145.92s/it]47
+Round 0 Acc.: 0.8936
+Round 1 Acc.: 0.9574
+Round 2 Acc.: 0.9362
+Round 3 Acc.: 0.9149
+ 94%|█████████▍| 47/50 [1:43:41<07:47, 155.69s/it]48
+Round 0 Acc.: 0.8958
+Round 1 Acc.: 0.9583
+Round 2 Acc.: 0.9375
+Round 3 Acc.: 0.9167
+ 96%|█████████▌| 48/50 [1:46:03<05:03, 151.71s/it]49
+Round 0 Acc.: 0.8980
+Round 1 Acc.: 0.9592
+Round 2 Acc.: 0.9388
+Round 3 Acc.: 0.9184
+ 98%|█████████▊| 49/50 [1:48:23<02:27, 147.95s/it]50
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.9600
+Round 2 Acc.: 0.9400
+Round 3 Acc.: 0.9200
+100%|██████████| 50/50 [1:50:00<00:00, 132.66s/it]100%|██████████| 50/50 [1:50:00<00:00, 132.00s/it]
+Completed Temp=0.5
+Running experiment with Variant Temperature: 1.0
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:03,  1.24s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:02<00:02,  1.20s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:03<00:01,  1.20s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.15s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.17s/it]
+Device set to use cuda:0
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+WARNING:datasets.load:Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+WARNING:datasets.packaged_modules.cache.cache:Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+  0%|          | 0/50 [00:00<?, ?it/s]1
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  2%|▏         | 1/50 [02:52<2:20:52, 172.51s/it]2
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  4%|▍         | 2/50 [05:40<2:16:01, 170.03s/it]3
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  6%|▌         | 3/50 [08:11<2:06:13, 161.13s/it]4
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  8%|▊         | 4/50 [10:16<1:52:43, 147.02s/it]5
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 10%|█         | 5/50 [12:17<1:43:08, 137.52s/it]6
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 12%|█▏        | 6/50 [15:02<1:47:48, 147.01s/it]7
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 14%|█▍        | 7/50 [17:33<1:46:05, 148.05s/it]8
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 16%|█▌        | 8/50 [20:14<1:46:42, 152.45s/it]9
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 18%|█▊        | 9/50 [22:47<1:44:14, 152.54s/it]10
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+ 20%|██        | 10/50 [24:58<1:37:18, 145.97s/it]11
+Round 0 Acc.: 0.9091
+Round 1 Acc.: 0.9091
+Round 2 Acc.: 0.9091
+Round 3 Acc.: 0.9091
+ 22%|██▏       | 11/50 [27:47<1:39:24, 152.94s/it]12
+Round 0 Acc.: 0.9167
+Round 1 Acc.: 0.9167
+Round 2 Acc.: 0.9167
+Round 3 Acc.: 0.9167
+ 24%|██▍       | 12/50 [29:55<1:32:00, 145.28s/it]13
+Round 0 Acc.: 0.9231
+Round 1 Acc.: 0.9231
+Round 2 Acc.: 0.9231
+Round 3 Acc.: 0.9231
+ 26%|██▌       | 13/50 [31:21<1:18:27, 127.24s/it]14
+Round 0 Acc.: 0.9286
+Round 1 Acc.: 0.9286
+Round 2 Acc.: 0.9286
+Round 3 Acc.: 0.9286
+ 28%|██▊       | 14/50 [34:08<1:23:33, 139.26s/it]15
+Round 0 Acc.: 0.9333
+Round 1 Acc.: 0.9333
+Round 2 Acc.: 0.9333
+Round 3 Acc.: 0.9333
+ 30%|███       | 15/50 [36:57<1:26:33, 148.40s/it]16
+Round 0 Acc.: 0.9375
+Round 1 Acc.: 0.9375
+Round 2 Acc.: 0.9375
+Round 3 Acc.: 0.9375
+ 32%|███▏      | 16/50 [39:03<1:20:14, 141.61s/it]17
+Round 0 Acc.: 0.9412
+Round 1 Acc.: 0.9412
+Round 2 Acc.: 0.9412
+Round 3 Acc.: 0.9412
+ 34%|███▍      | 17/50 [41:58<1:23:21, 151.57s/it]18
+Round 0 Acc.: 0.9444
+Round 1 Acc.: 0.9444
+Round 2 Acc.: 0.9444
+Round 3 Acc.: 0.9444
+ 36%|███▌      | 18/50 [44:22<1:19:37, 149.30s/it]19
+Round 0 Acc.: 0.9474
+Round 1 Acc.: 0.9474
+Round 2 Acc.: 0.9474
+Round 3 Acc.: 0.9474
+ 38%|███▊      | 19/50 [47:11<1:20:09, 155.13s/it]20
+Round 0 Acc.: 0.9500
+Round 1 Acc.: 0.9500
+Round 2 Acc.: 0.9500
+Round 3 Acc.: 0.9500
+ 40%|████      | 20/50 [48:52<1:09:34, 139.16s/it]21
+Round 0 Acc.: 0.9524
+Round 1 Acc.: 0.9524
+Round 2 Acc.: 0.9524
+Round 3 Acc.: 0.9524
+ 42%|████▏     | 21/50 [51:18<1:08:13, 141.15s/it]22
+Round 0 Acc.: 0.9545
+Round 1 Acc.: 0.9545
+Round 2 Acc.: 0.9545
+Round 3 Acc.: 0.9545
+ 44%|████▍     | 22/50 [53:42<1:06:15, 141.98s/it]23
+Round 0 Acc.: 0.9565
+Round 1 Acc.: 0.9565
+Round 2 Acc.: 0.9565
+Round 3 Acc.: 0.9565
+ 46%|████▌     | 23/50 [56:19<1:05:55, 146.49s/it]24
+Round 0 Acc.: 0.9583
+Round 1 Acc.: 0.9583
+Round 2 Acc.: 0.9583
+Round 3 Acc.: 0.9167
+ 48%|████▊     | 24/50 [58:40<1:02:43, 144.75s/it]25
+Round 0 Acc.: 0.9600
+Round 1 Acc.: 0.9600
+Round 2 Acc.: 0.9600
+Round 3 Acc.: 0.9200
+ 50%|█████     | 25/50 [1:00:28<55:43, 133.76s/it]26
+Round 0 Acc.: 0.9615
+Round 1 Acc.: 0.9615
+Round 2 Acc.: 0.9615
+Round 3 Acc.: 0.9231
+ 52%|█████▏    | 26/50 [1:03:05<56:19, 140.81s/it]27
+Round 0 Acc.: 0.9630
+Round 1 Acc.: 0.9630
+Round 2 Acc.: 0.9630
+Round 3 Acc.: 0.9259
+ 54%|█████▍    | 27/50 [1:05:18<53:00, 138.27s/it]28
+Round 0 Acc.: 0.9643
+Round 1 Acc.: 0.9643
+Round 2 Acc.: 0.9643
+Round 3 Acc.: 0.9286
+ 56%|█████▌    | 28/50 [1:07:46<51:50, 141.37s/it]29
+Round 0 Acc.: 0.9655
+Round 1 Acc.: 0.9655
+Round 2 Acc.: 0.9655
+Round 3 Acc.: 0.9310
+ 58%|█████▊    | 29/50 [1:09:44<46:58, 134.22s/it]30
+Round 0 Acc.: 0.9667
+Round 1 Acc.: 0.9667
+Round 2 Acc.: 0.9667
+Round 3 Acc.: 0.9333
+ 60%|██████    | 30/50 [1:11:16<40:33, 121.65s/it]31
+Round 0 Acc.: 0.9677
+Round 1 Acc.: 0.9677
+Round 2 Acc.: 0.9677
+Round 3 Acc.: 0.9355
+ 62%|██████▏   | 31/50 [1:13:14<38:11, 120.61s/it]32
+Round 0 Acc.: 0.9688
+Round 1 Acc.: 0.9688
+Round 2 Acc.: 0.9688
+Round 3 Acc.: 0.9375
+ 64%|██████▍   | 32/50 [1:15:56<39:53, 132.98s/it]33
+Round 0 Acc.: 0.9697
+Round 1 Acc.: 0.9697
+Round 2 Acc.: 0.9697
+Round 3 Acc.: 0.9394
+ 66%|██████▌   | 33/50 [1:17:44<35:31, 125.39s/it]34
+Round 0 Acc.: 0.9706
+Round 1 Acc.: 0.9706
+Round 2 Acc.: 0.9706
+Round 3 Acc.: 0.9412
+ 68%|██████▊   | 34/50 [1:20:41<37:34, 140.94s/it]35
+Round 0 Acc.: 0.9714
+Round 1 Acc.: 0.9714
+Round 2 Acc.: 0.9714
+Round 3 Acc.: 0.9429
+ 70%|███████   | 35/50 [1:23:24<36:54, 147.64s/it]36
+Round 0 Acc.: 0.9722
+Round 1 Acc.: 0.9722
+Round 2 Acc.: 0.9722
+Round 3 Acc.: 0.9444
+ 72%|███████▏  | 36/50 [1:25:31<32:59, 141.36s/it]37
+Round 0 Acc.: 0.9730
+Round 1 Acc.: 0.9730
+Round 2 Acc.: 0.9730
+Round 3 Acc.: 0.9189
+ 74%|███████▍  | 37/50 [1:27:49<30:23, 140.25s/it]38
+Round 0 Acc.: 0.9737
+Round 1 Acc.: 0.9737
+Round 2 Acc.: 0.9737
+Round 3 Acc.: 0.9211
+ 76%|███████▌  | 38/50 [1:30:13<28:18, 141.53s/it]39
+Round 0 Acc.: 0.9744
+Round 1 Acc.: 0.9744
+Round 2 Acc.: 0.9744
+Round 3 Acc.: 0.9231
+ 78%|███████▊  | 39/50 [1:32:42<26:19, 143.58s/it]40
+Round 0 Acc.: 0.9750
+Round 1 Acc.: 0.9750
+Round 2 Acc.: 0.9750
+Round 3 Acc.: 0.9250
+ 80%|████████  | 40/50 [1:34:40<22:39, 135.98s/it]41
+Round 0 Acc.: 0.9756
+Round 1 Acc.: 0.9756
+Round 2 Acc.: 0.9756
+Round 3 Acc.: 0.9268
+ 82%|████████▏ | 41/50 [1:37:14<21:12, 141.41s/it]42
+Round 0 Acc.: 0.9762
+Round 1 Acc.: 0.9762
+Round 2 Acc.: 0.9762
+Round 3 Acc.: 0.9286
+ 84%|████████▍ | 42/50 [1:40:02<19:55, 149.47s/it]43
+Round 0 Acc.: 0.9767
+Round 1 Acc.: 0.9767
+Round 2 Acc.: 0.9767
+Round 3 Acc.: 0.9302
+ 86%|████████▌ | 43/50 [1:42:05<16:30, 141.47s/it]44
+Round 0 Acc.: 0.9773
+Round 1 Acc.: 0.9773
+Round 2 Acc.: 0.9773
+Round 3 Acc.: 0.9318
+ 88%|████████▊ | 44/50 [1:44:18<13:54, 139.04s/it]45
+Round 0 Acc.: 0.9778
+Round 1 Acc.: 0.9778
+Round 2 Acc.: 0.9778
+Round 3 Acc.: 0.9333
+ 90%|█████████ | 45/50 [1:46:41<11:40, 140.08s/it]46
+Round 0 Acc.: 0.9783
+Round 1 Acc.: 0.9783
+Round 2 Acc.: 0.9783
+Round 3 Acc.: 0.9348
+ 92%|█████████▏| 46/50 [1:48:54<09:11, 137.94s/it]47
+Round 0 Acc.: 0.9787
+Round 1 Acc.: 0.9787
+Round 2 Acc.: 0.9787
+Round 3 Acc.: 0.9362
+ 94%|█████████▍| 47/50 [1:51:47<07:25, 148.50s/it]48
+Round 0 Acc.: 0.9792
+Round 1 Acc.: 0.9792
+Round 2 Acc.: 0.9792
+Round 3 Acc.: 0.9375
+ 96%|█████████▌| 48/50 [1:53:32<04:31, 135.50s/it]49
+Round 0 Acc.: 0.9592
+Round 1 Acc.: 0.9592
+Round 2 Acc.: 0.9592
+Round 3 Acc.: 0.9184
+ 98%|█████████▊| 49/50 [1:55:03<02:02, 122.26s/it]50
+Round 0 Acc.: 0.9600
+Round 1 Acc.: 0.9600
+Round 2 Acc.: 0.9600
+Round 3 Acc.: 0.9200
+100%|██████████| 50/50 [1:57:46<00:00, 134.45s/it]100%|██████████| 50/50 [1:57:46<00:00, 141.34s/it]
+Completed Temp=1.0
+Running experiment with Variant Temperature: 1.5
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:04,  1.37s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:02<00:02,  1.33s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:03<00:01,  1.32s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.27s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.29s/it]
+Device set to use cuda:0
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+WARNING:datasets.load:Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+WARNING:datasets.packaged_modules.cache.cache:Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+  0%|          | 0/50 [00:00<?, ?it/s]1
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 1.0000
+Round 3 Acc.: 1.0000
+  2%|▏         | 1/50 [02:53<2:21:49, 173.67s/it]2
+Round 0 Acc.: 0.5000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.5000
+Round 3 Acc.: 1.0000
+  4%|▍         | 2/50 [05:37<2:14:21, 167.95s/it]3
+Round 0 Acc.: 0.6667
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 1.0000
+  6%|▌         | 3/50 [08:07<2:05:07, 159.74s/it]4
+Round 0 Acc.: 0.7500
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.7500
+Round 3 Acc.: 1.0000
+  8%|▊         | 4/50 [10:02<1:48:55, 142.08s/it]5
+Round 0 Acc.: 0.8000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.8000
+Round 3 Acc.: 1.0000
+ 10%|█         | 5/50 [12:21<1:45:35, 140.79s/it]6
+Round 0 Acc.: 0.8333
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.8333
+Round 3 Acc.: 1.0000
+ 12%|█▏        | 6/50 [15:22<1:53:23, 154.63s/it]7
+Round 0 Acc.: 0.8571
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.8571
+Round 3 Acc.: 1.0000
+ 14%|█▍        | 7/50 [18:11<1:54:07, 159.24s/it]8
+Round 0 Acc.: 0.8750
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.8750
+Round 3 Acc.: 1.0000
+ 16%|█▌        | 8/50 [20:32<1:47:21, 153.37s/it]9
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.7778
+Round 3 Acc.: 0.8889
+ 18%|█▊        | 9/50 [23:22<1:48:25, 158.66s/it]10
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.8000
+Round 3 Acc.: 0.9000
+ 20%|██        | 10/50 [25:40<1:41:32, 152.31s/it]11
+Round 0 Acc.: 0.8182
+Round 1 Acc.: 0.9091
+Round 2 Acc.: 0.7273
+Round 3 Acc.: 0.8182
+ 22%|██▏       | 11/50 [28:35<1:43:29, 159.21s/it]12
+Round 0 Acc.: 0.8333
+Round 1 Acc.: 0.9167
+Round 2 Acc.: 0.7500
+Round 3 Acc.: 0.8333
+ 24%|██▍       | 12/50 [30:36<1:33:26, 147.54s/it]13
+Round 0 Acc.: 0.8462
+Round 1 Acc.: 0.9231
+Round 2 Acc.: 0.7692
+Round 3 Acc.: 0.8462
+ 26%|██▌       | 13/50 [33:07<1:31:38, 148.60s/it]14
+Round 0 Acc.: 0.8571
+Round 1 Acc.: 0.8571
+Round 2 Acc.: 0.7857
+Round 3 Acc.: 0.8571
+ 28%|██▊       | 14/50 [36:05<1:34:32, 157.58s/it]15
+Round 0 Acc.: 0.8667
+Round 1 Acc.: 0.8667
+Round 2 Acc.: 0.8000
+Round 3 Acc.: 0.8000
+ 30%|███       | 15/50 [39:03<1:35:31, 163.77s/it]16
+Round 0 Acc.: 0.8750
+Round 1 Acc.: 0.8750
+Round 2 Acc.: 0.8125
+Round 3 Acc.: 0.8125
+ 32%|███▏      | 16/50 [41:49<1:33:05, 164.29s/it]17
+Round 0 Acc.: 0.8824
+Round 1 Acc.: 0.8824
+Round 2 Acc.: 0.8235
+Round 3 Acc.: 0.8235
+ 34%|███▍      | 17/50 [43:20<1:18:19, 142.41s/it]18
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 0.8889
+Round 2 Acc.: 0.8333
+Round 3 Acc.: 0.8333
+ 36%|███▌      | 18/50 [46:07<1:19:47, 149.62s/it]19
+Round 0 Acc.: 0.8947
+Round 1 Acc.: 0.8947
+Round 2 Acc.: 0.8421
+Round 3 Acc.: 0.8421
+ 38%|███▊      | 19/50 [48:52<1:19:43, 154.31s/it]20
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.9000
+Round 2 Acc.: 0.8500
+Round 3 Acc.: 0.8000
+ 40%|████      | 20/50 [51:32<1:17:58, 155.95s/it]21
+Round 0 Acc.: 0.9048
+Round 1 Acc.: 0.9048
+Round 2 Acc.: 0.8571
+Round 3 Acc.: 0.8095
+ 42%|████▏     | 21/50 [54:22<1:17:30, 160.36s/it]22
+Round 0 Acc.: 0.9091
+Round 1 Acc.: 0.9091
+Round 2 Acc.: 0.8636
+Round 3 Acc.: 0.8182
+ 44%|████▍     | 22/50 [56:26<1:09:44, 149.46s/it]23
+Round 0 Acc.: 0.9130
+Round 1 Acc.: 0.9130
+Round 2 Acc.: 0.8261
+Round 3 Acc.: 0.7826
+ 46%|████▌     | 23/50 [59:16<1:10:01, 155.62s/it]24
+Round 0 Acc.: 0.9167
+Round 1 Acc.: 0.9167
+Round 2 Acc.: 0.8333
+Round 3 Acc.: 0.7917
+ 48%|████▊     | 24/50 [1:01:37<1:05:33, 151.29s/it]25
+Round 0 Acc.: 0.9200
+Round 1 Acc.: 0.9200
+Round 2 Acc.: 0.8400
+Round 3 Acc.: 0.8000
+ 50%|█████     | 25/50 [1:04:00<1:01:59, 148.80s/it]26
+Round 0 Acc.: 0.9231
+Round 1 Acc.: 0.9231
+Round 2 Acc.: 0.8462
+Round 3 Acc.: 0.8077
+ 52%|█████▏    | 26/50 [1:06:54<1:02:27, 156.14s/it]27
+Round 0 Acc.: 0.9259
+Round 1 Acc.: 0.9259
+Round 2 Acc.: 0.8519
+Round 3 Acc.: 0.8148
+ 54%|█████▍    | 27/50 [1:09:43<1:01:18, 159.95s/it]28
+Round 0 Acc.: 0.9286
+Round 1 Acc.: 0.9286
+Round 2 Acc.: 0.8571
+Round 3 Acc.: 0.8214
+ 56%|█████▌    | 28/50 [1:12:10<57:14, 156.11s/it]  29
+Round 0 Acc.: 0.9310
+Round 1 Acc.: 0.9310
+Round 2 Acc.: 0.8621
+Round 3 Acc.: 0.8276
+ 58%|█████▊    | 29/50 [1:14:58<55:52, 159.63s/it]30
+Round 0 Acc.: 0.9333
+Round 1 Acc.: 0.9333
+Round 2 Acc.: 0.8667
+Round 3 Acc.: 0.8333
+ 60%|██████    | 30/50 [1:17:15<51:01, 153.07s/it]31
+Round 0 Acc.: 0.9355
+Round 1 Acc.: 0.9355
+Round 2 Acc.: 0.8710
+Round 3 Acc.: 0.8387
+ 62%|██████▏   | 31/50 [1:20:06<50:10, 158.46s/it]32
+Round 0 Acc.: 0.9375
+Round 1 Acc.: 0.9375
+Round 2 Acc.: 0.8750
+Round 3 Acc.: 0.8438
+ 64%|██████▍   | 32/50 [1:22:51<48:08, 160.46s/it]33
+Round 0 Acc.: 0.9394
+Round 1 Acc.: 0.9394
+Round 2 Acc.: 0.8788
+Round 3 Acc.: 0.8182
+ 66%|██████▌   | 33/50 [1:25:33<45:34, 160.87s/it]34
+Round 0 Acc.: 0.9412
+Round 1 Acc.: 0.9412
+Round 2 Acc.: 0.8824
+Round 3 Acc.: 0.8235
+ 68%|██████▊   | 34/50 [1:27:57<41:30, 155.66s/it]35
+Round 0 Acc.: 0.9429
+Round 1 Acc.: 0.9429
+Round 2 Acc.: 0.8857
+Round 3 Acc.: 0.8286
+ 70%|███████   | 35/50 [1:30:42<39:37, 158.48s/it]36
+Round 0 Acc.: 0.9444
+Round 1 Acc.: 0.9444
+Round 2 Acc.: 0.8889
+Round 3 Acc.: 0.8056
+ 72%|███████▏  | 36/50 [1:33:15<36:35, 156.80s/it]37
+Round 0 Acc.: 0.9459
+Round 1 Acc.: 0.9459
+Round 2 Acc.: 0.8919
+Round 3 Acc.: 0.8108
+ 74%|███████▍  | 37/50 [1:35:17<31:44, 146.52s/it]38
+Round 0 Acc.: 0.9474
+Round 1 Acc.: 0.9474
+Round 2 Acc.: 0.8684
+Round 3 Acc.: 0.7895
+ 76%|███████▌  | 38/50 [1:38:09<30:49, 154.16s/it]39
+Round 0 Acc.: 0.9487
+Round 1 Acc.: 0.9487
+Round 2 Acc.: 0.8718
+Round 3 Acc.: 0.7949
+ 78%|███████▊  | 39/50 [1:40:54<28:49, 157.25s/it]40
+Round 0 Acc.: 0.9500
+Round 1 Acc.: 0.9500
+Round 2 Acc.: 0.8750
+Round 3 Acc.: 0.8000
+ 80%|████████  | 40/50 [1:43:06<24:56, 149.70s/it]41
+Round 0 Acc.: 0.9512
+Round 1 Acc.: 0.9512
+Round 2 Acc.: 0.8537
+Round 3 Acc.: 0.7805
+ 82%|████████▏ | 41/50 [1:45:52<23:12, 154.68s/it]42
+Round 0 Acc.: 0.9524
+Round 1 Acc.: 0.9524
+Round 2 Acc.: 0.8571
+Round 3 Acc.: 0.7857
+ 84%|████████▍ | 42/50 [1:48:38<21:03, 157.94s/it]43
+Round 0 Acc.: 0.9535
+Round 1 Acc.: 0.9302
+Round 2 Acc.: 0.8605
+Round 3 Acc.: 0.7907
+ 86%|████████▌ | 43/50 [1:51:35<19:06, 163.82s/it]44
+Round 0 Acc.: 0.9545
+Round 1 Acc.: 0.9318
+Round 2 Acc.: 0.8636
+Round 3 Acc.: 0.7955
+ 88%|████████▊ | 44/50 [1:54:04<15:55, 159.20s/it]45
+Round 0 Acc.: 0.9556
+Round 1 Acc.: 0.9333
+Round 2 Acc.: 0.8667
+Round 3 Acc.: 0.7778
+ 90%|█████████ | 45/50 [1:56:25<12:49, 153.97s/it]46
+Round 0 Acc.: 0.9565
+Round 1 Acc.: 0.9348
+Round 2 Acc.: 0.8696
+Round 3 Acc.: 0.7826
+ 92%|█████████▏| 46/50 [1:59:04<10:21, 155.30s/it]47
+Round 0 Acc.: 0.9574
+Round 1 Acc.: 0.9362
+Round 2 Acc.: 0.8723
+Round 3 Acc.: 0.7872
+ 94%|█████████▍| 47/50 [2:02:02<08:06, 162.15s/it]48
+Round 0 Acc.: 0.9583
+Round 1 Acc.: 0.9375
+Round 2 Acc.: 0.8750
+Round 3 Acc.: 0.7917
+ 96%|█████████▌| 48/50 [2:04:32<05:17, 158.59s/it]49
+Round 0 Acc.: 0.9592
+Round 1 Acc.: 0.9388
+Round 2 Acc.: 0.8776
+Round 3 Acc.: 0.7959
+ 98%|█████████▊| 49/50 [2:06:41<02:29, 149.68s/it]50
+Round 0 Acc.: 0.9600
+Round 1 Acc.: 0.9400
+Round 2 Acc.: 0.8800
+Round 3 Acc.: 0.8000
+100%|██████████| 50/50 [2:09:36<00:00, 157.29s/it]100%|██████████| 50/50 [2:09:36<00:00, 155.53s/it]
+Completed Temp=1.5
+Running experiment with Variant Temperature: 2.0
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:04,  1.41s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:02<00:02,  1.35s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:04<00:01,  1.35s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.29s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.32s/it]
+Device set to use cuda:0
+Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+WARNING:datasets.load:Using the latest cached version of the dataset since openai/gsm8k couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+WARNING:datasets.packaged_modules.cache.cache:Found the latest cached dataset configuration 'main' at /export/home3/dazhou/debate-or-vote/datasets/openai___gsm8k/main/0.0.0/cc7b047b6e5bb11b4f1af84efc572db110a51b3c (last modified on Sun Feb  1 17:16:33 2026).
+  0%|          | 0/50 [00:00<?, ?it/s]1
+Round 0 Acc.: 1.0000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.0000
+Round 3 Acc.: 1.0000
+  2%|▏         | 1/50 [02:49<2:18:37, 169.74s/it]2
+Round 0 Acc.: 0.5000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.5000
+Round 3 Acc.: 1.0000
+  4%|▍         | 2/50 [05:32<2:12:40, 165.84s/it]3
+Round 0 Acc.: 0.6667
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.3333
+Round 3 Acc.: 1.0000
+  6%|▌         | 3/50 [08:24<2:12:06, 168.65s/it]4
+Round 0 Acc.: 0.7500
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.5000
+Round 3 Acc.: 1.0000
+  8%|▊         | 4/50 [10:54<2:03:38, 161.28s/it]5
+Round 0 Acc.: 0.8000
+Round 1 Acc.: 1.0000
+Round 2 Acc.: 0.6000
+Round 3 Acc.: 1.0000
+ 10%|█         | 5/50 [13:30<1:59:27, 159.29s/it]6
+Round 0 Acc.: 0.6667
+Round 1 Acc.: 0.8333
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 1.0000
+ 12%|█▏        | 6/50 [16:39<2:04:16, 169.47s/it]7
+Round 0 Acc.: 0.7143
+Round 1 Acc.: 0.8571
+Round 2 Acc.: 0.7143
+Round 3 Acc.: 1.0000
+ 14%|█▍        | 7/50 [19:35<2:02:51, 171.43s/it]8
+Round 0 Acc.: 0.7500
+Round 1 Acc.: 0.8750
+Round 2 Acc.: 0.6250
+Round 3 Acc.: 1.0000
+ 16%|█▌        | 8/50 [22:19<1:58:29, 169.28s/it]9
+Round 0 Acc.: 0.7778
+Round 1 Acc.: 0.7778
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 0.8889
+ 18%|█▊        | 9/50 [25:16<1:57:13, 171.54s/it]10
+Round 0 Acc.: 0.8000
+Round 1 Acc.: 0.8000
+Round 2 Acc.: 0.7000
+Round 3 Acc.: 0.9000
+ 20%|██        | 10/50 [27:43<1:49:15, 163.90s/it]11
+Round 0 Acc.: 0.7273
+Round 1 Acc.: 0.7273
+Round 2 Acc.: 0.6364
+Round 3 Acc.: 0.8182
+ 22%|██▏       | 11/50 [30:38<1:48:48, 167.39s/it]12
+Round 0 Acc.: 0.7500
+Round 1 Acc.: 0.7500
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 0.8333
+ 24%|██▍       | 12/50 [32:53<1:39:42, 157.44s/it]13
+Round 0 Acc.: 0.7692
+Round 1 Acc.: 0.7692
+Round 2 Acc.: 0.6154
+Round 3 Acc.: 0.8462
+ 26%|██▌       | 13/50 [35:17<1:34:37, 153.44s/it]14
+Round 0 Acc.: 0.7857
+Round 1 Acc.: 0.7857
+Round 2 Acc.: 0.6429
+Round 3 Acc.: 0.7857
+ 28%|██▊       | 14/50 [38:10<1:35:32, 159.23s/it]15
+Round 0 Acc.: 0.8000
+Round 1 Acc.: 0.8000
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 0.8000
+ 30%|███       | 15/50 [41:03<1:35:22, 163.51s/it]16
+Round 0 Acc.: 0.8125
+Round 1 Acc.: 0.8125
+Round 2 Acc.: 0.6875
+Round 3 Acc.: 0.8125
+ 32%|███▏      | 16/50 [43:28<1:29:25, 157.80s/it]17
+Round 0 Acc.: 0.8235
+Round 1 Acc.: 0.7647
+Round 2 Acc.: 0.7059
+Round 3 Acc.: 0.8235
+ 34%|███▍      | 17/50 [46:07<1:27:05, 158.36s/it]18
+Round 0 Acc.: 0.8333
+Round 1 Acc.: 0.7778
+Round 2 Acc.: 0.7222
+Round 3 Acc.: 0.8333
+ 36%|███▌      | 18/50 [48:57<1:26:15, 161.74s/it]19
+Round 0 Acc.: 0.8421
+Round 1 Acc.: 0.7895
+Round 2 Acc.: 0.7368
+Round 3 Acc.: 0.7895
+ 38%|███▊      | 19/50 [51:47<1:24:53, 164.31s/it]20
+Round 0 Acc.: 0.8500
+Round 1 Acc.: 0.8000
+Round 2 Acc.: 0.7500
+Round 3 Acc.: 0.8000
+ 40%|████      | 20/50 [54:07<1:18:25, 156.85s/it]21
+Round 0 Acc.: 0.8571
+Round 1 Acc.: 0.8095
+Round 2 Acc.: 0.7619
+Round 3 Acc.: 0.8095
+ 42%|████▏     | 21/50 [57:03<1:18:43, 162.87s/it]22
+Round 0 Acc.: 0.8636
+Round 1 Acc.: 0.8182
+Round 2 Acc.: 0.7727
+Round 3 Acc.: 0.8182
+ 44%|████▍     | 22/50 [59:44<1:15:44, 162.29s/it]23
+Round 0 Acc.: 0.8696
+Round 1 Acc.: 0.8261
+Round 2 Acc.: 0.7391
+Round 3 Acc.: 0.8261
+ 46%|████▌     | 23/50 [1:02:46<1:15:40, 168.18s/it]24
+Round 0 Acc.: 0.8750
+Round 1 Acc.: 0.7917
+Round 2 Acc.: 0.7500
+Round 3 Acc.: 0.8333
+ 48%|████▊     | 24/50 [1:05:20<1:10:57, 163.75s/it]25
+Round 0 Acc.: 0.8800
+Round 1 Acc.: 0.7600
+Round 2 Acc.: 0.7200
+Round 3 Acc.: 0.8400
+ 50%|█████     | 25/50 [1:07:58<1:07:31, 162.06s/it]26
+Round 0 Acc.: 0.8846
+Round 1 Acc.: 0.7692
+Round 2 Acc.: 0.7308
+Round 3 Acc.: 0.8077
+ 52%|█████▏    | 26/50 [1:10:52<1:06:16, 165.67s/it]27
+Round 0 Acc.: 0.8889
+Round 1 Acc.: 0.7778
+Round 2 Acc.: 0.7037
+Round 3 Acc.: 0.8148
+ 54%|█████▍    | 27/50 [1:13:42<1:03:58, 166.91s/it]28
+Round 0 Acc.: 0.8929
+Round 1 Acc.: 0.7857
+Round 2 Acc.: 0.7143
+Round 3 Acc.: 0.8214
+ 56%|█████▌    | 28/50 [1:16:05<58:36, 159.84s/it]  29
+Round 0 Acc.: 0.8966
+Round 1 Acc.: 0.7586
+Round 2 Acc.: 0.7241
+Round 3 Acc.: 0.8276
+ 58%|█████▊    | 29/50 [1:18:56<57:08, 163.24s/it]30
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.7667
+Round 2 Acc.: 0.7333
+Round 3 Acc.: 0.8000
+ 60%|██████    | 30/50 [1:21:22<52:39, 157.96s/it]31
+Round 0 Acc.: 0.9032
+Round 1 Acc.: 0.7742
+Round 2 Acc.: 0.7097
+Round 3 Acc.: 0.7742
+ 62%|██████▏   | 31/50 [1:24:13<51:13, 161.79s/it]32
+Round 0 Acc.: 0.9062
+Round 1 Acc.: 0.7812
+Round 2 Acc.: 0.7188
+Round 3 Acc.: 0.7812
+ 64%|██████▍   | 32/50 [1:26:55<48:33, 161.86s/it]33
+Round 0 Acc.: 0.9091
+Round 1 Acc.: 0.7879
+Round 2 Acc.: 0.7273
+Round 3 Acc.: 0.7576
+ 66%|██████▌   | 33/50 [1:29:25<44:52, 158.36s/it]34
+Round 0 Acc.: 0.9118
+Round 1 Acc.: 0.7941
+Round 2 Acc.: 0.7353
+Round 3 Acc.: 0.7647
+ 68%|██████▊   | 34/50 [1:31:56<41:39, 156.22s/it]35
+Round 0 Acc.: 0.9143
+Round 1 Acc.: 0.8000
+Round 2 Acc.: 0.7143
+Round 3 Acc.: 0.7714
+ 70%|███████   | 35/50 [1:34:46<40:06, 160.47s/it]36
+Round 0 Acc.: 0.9167
+Round 1 Acc.: 0.8056
+Round 2 Acc.: 0.7222
+Round 3 Acc.: 0.7778
+ 72%|███████▏  | 36/50 [1:37:21<37:00, 158.59s/it]37
+Round 0 Acc.: 0.9189
+Round 1 Acc.: 0.8108
+Round 2 Acc.: 0.7297
+Round 3 Acc.: 0.7568
+ 74%|███████▍  | 37/50 [1:39:50<33:46, 155.85s/it]38
+Round 0 Acc.: 0.8947
+Round 1 Acc.: 0.8158
+Round 2 Acc.: 0.7105
+Round 3 Acc.: 0.7632
+ 76%|███████▌  | 38/50 [1:42:35<31:43, 158.61s/it]39
+Round 0 Acc.: 0.8974
+Round 1 Acc.: 0.8205
+Round 2 Acc.: 0.6923
+Round 3 Acc.: 0.7692
+ 78%|███████▊  | 39/50 [1:45:09<28:49, 157.23s/it]40
+Round 0 Acc.: 0.9000
+Round 1 Acc.: 0.8250
+Round 2 Acc.: 0.7000
+Round 3 Acc.: 0.7750
+ 80%|████████  | 40/50 [1:47:47<26:15, 157.52s/it]41
+Round 0 Acc.: 0.9024
+Round 1 Acc.: 0.8293
+Round 2 Acc.: 0.7073
+Round 3 Acc.: 0.7561
+ 82%|████████▏ | 41/50 [1:50:42<24:24, 162.69s/it]42
+Round 0 Acc.: 0.9048
+Round 1 Acc.: 0.8095
+Round 2 Acc.: 0.7143
+Round 3 Acc.: 0.7619
+ 84%|████████▍ | 42/50 [1:53:41<22:19, 167.40s/it]43
+Round 0 Acc.: 0.9070
+Round 1 Acc.: 0.8140
+Round 2 Acc.: 0.6977
+Round 3 Acc.: 0.7674
+ 86%|████████▌ | 43/50 [1:56:23<19:21, 165.95s/it]44
+Round 0 Acc.: 0.9091
+Round 1 Acc.: 0.7955
+Round 2 Acc.: 0.6818
+Round 3 Acc.: 0.7727
+ 88%|████████▊ | 44/50 [1:59:11<16:40, 166.69s/it]45
+Round 0 Acc.: 0.9111
+Round 1 Acc.: 0.8000
+Round 2 Acc.: 0.6889
+Round 3 Acc.: 0.7778
+ 90%|█████████ | 45/50 [2:01:48<13:37, 163.58s/it]46
+Round 0 Acc.: 0.9130
+Round 1 Acc.: 0.8043
+Round 2 Acc.: 0.6957
+Round 3 Acc.: 0.7826
+ 92%|█████████▏| 46/50 [2:04:40<11:04, 166.08s/it]47
+Round 0 Acc.: 0.8936
+Round 1 Acc.: 0.8085
+Round 2 Acc.: 0.6809
+Round 3 Acc.: 0.7872
+ 94%|█████████▍| 47/50 [2:07:34<08:25, 168.66s/it]48
+Round 0 Acc.: 0.8958
+Round 1 Acc.: 0.8125
+Round 2 Acc.: 0.6667
+Round 3 Acc.: 0.7708
+ 96%|█████████▌| 48/50 [2:10:23<05:37, 168.51s/it]49
+Round 0 Acc.: 0.8776
+Round 1 Acc.: 0.8163
+Round 2 Acc.: 0.6531
+Round 3 Acc.: 0.7551
+ 98%|█████████▊| 49/50 [2:13:07<02:47, 167.33s/it]50
+Round 0 Acc.: 0.8800
+Round 1 Acc.: 0.8200
+Round 2 Acc.: 0.6400
+Round 3 Acc.: 0.7600
+100%|██████████| 50/50 [2:15:44<00:00, 164.29s/it]100%|██████████| 50/50 [2:15:44<00:00, 162.90s/it]
+Completed Temp=2.0

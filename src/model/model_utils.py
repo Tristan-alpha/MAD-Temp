@@ -8,7 +8,7 @@ model_dirs = {
 
 
 
-def engine(messages, agent, num_agents=1, stop_sequences=None):
+def engine(messages, agent, num_agents=1, stop_sequences=None, temperature=1.0):
     if type(messages[0]) == list :
         prompts = [agent.tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True) for msgs in messages]
     else :
@@ -26,7 +26,7 @@ def engine(messages, agent, num_agents=1, stop_sequences=None):
         return_dict_in_generate=True,
         output_scores=True,
         do_sample=True,
-        temperature=1.0,
+        temperature=temperature,
         top_p=0.9,
         num_return_sequences=1,
         return_legacy_cache=True
