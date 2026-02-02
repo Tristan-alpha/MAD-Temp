@@ -41,6 +41,8 @@ def get_args():
 
     # agent
     parser.add_argument('--num_agents', type=int, default=5)
+    parser.add_argument('--variant_temperature', type=float, default=None, help="If set, enables dual-generation experiment with this temperature")
+    parser.add_argument('--target_agent_index', type=int, default=0, help="Index of the target agent for variant temperature experiment")
 
     parser.add_argument('--agent_selection', type=str, default="none")
     parser.add_argument('--multi_persona', action='store_true')
@@ -149,6 +151,7 @@ def main(args):
     elif args.centralized : fname += '_CENTRAL'
     if args.bae : fname += '_BAE'
     if args.multi_persona : fname += '_HETERO'
+    if args.variant_temperature is not None: fname += f'_T={args.variant_temperature}'
 
     agent_names = []
     for i in range(args.num_agents):
@@ -182,10 +185,10 @@ def main(args):
 
     for i, (x, y) in tqdm(enumerate(zip(test_X, test_Y)), total=len(test_X)):
 
-        print('\n\nQuestion: ', x + SUFFIX, '\n')
+        # print('\n\nQuestion: ', x + SUFFIX, '\n')
 
         # initialize opinions
-        print("Gathering initial opinions...")
+        # print("Gathering initial opinions...")
         round_iscorr = []
         if args.multi_persona :
             messages = []
@@ -196,6 +199,23 @@ def main(args):
         responses = engine(messages, agent, args.num_agents)
         agent_responses = dict(zip(agent_names, responses))
 
+        if args.variant_temperature is not None:
+             responses_default = agent_responses.copy()
+             responses_variant = agent_responses.copy() # Initial round 0 (no debate yet) depends on how we init. 
+             # Actually, standard init is just answering the question. 
+             # Should we generate dual responses for Round 0 too? 
+             # Plan says: "In every round, every agent generates two responses"
+             # So yes.
+             
+             # Re-generate Round 0 Variant Response
+             responses_var_0 = engine(messages, agent, args.num_agents, temperature=args.variant_temperature)
+             responses_variant = dict(zip(agent_names, responses_var_0))
+             
+             # agent_responses for Round 0 eval... let's use Variant for consistency with tracking target agent?
+             # Or stick to default?
+             # Let's keep agent_responses as Default for Round 0 Baseline.
+             pass
+
         # evaluate
         if args.centralized :
             central_agent_response = {list(agent_responses.keys())[0] : list(agent_responses.values())[0]}
@@ -203,7 +223,7 @@ def main(args):
         else :
             final_resps, debate_resps, is_corr = evaluate(agent_responses, y)
 
-        print(f"ROUND 0 : {final_resps} (answer = {y})")
+        # print(f"ROUND 0 : {final_resps} (answer = {y})")
         if args.data in ['arithmetics','gsm8k']:
             round_data = {
                 'responses': agent_responses,
@@ -230,28 +250,90 @@ def main(args):
 
         # begin debate
         for r in range(start, args.debate_rounds+1) :
+            # print(f"Debating round {r}...")
 
-            print(f"Debating round {r}...")
-            if args.multi_persona:
-                new_agent_messages = get_new_message(args, x, agent_responses, personas, suffix=SUFFIX)
+            # --- EXPERIMENT LOGIC: DUAL GENERATION ---
+            if args.variant_temperature is not None:
+                # 1. Construct Prompts
+                # Target Agent sees Variant History
+                if args.multi_persona:
+                    msgs_variant_univ = get_new_message(args, x, responses_variant, personas, suffix=SUFFIX)
+                    msgs_default_univ = get_new_message(args, x, responses_default, personas, suffix=SUFFIX)
+                else:
+                    msgs_variant_univ = get_new_message(args, x, responses_variant, suffix=SUFFIX)
+                    msgs_default_univ = get_new_message(args, x, responses_default, suffix=SUFFIX)
+                
+                messages = []
+                for k, name in enumerate(agent_names):
+                    if k == args.target_agent_index:
+                        messages.append(msgs_variant_univ[name])
+                    else:
+                        messages.append(msgs_default_univ[name])
+
+                # 2. Dual Generation using the SAME prompts (Selective Exposure enforced by prompt construction above)
+                # Generate Default (Temp=1.0)
+                res_def = engine(messages, agent, args.num_agents, temperature=1.0)
+                
+                # Generate Variant (Temp=T)
+                res_var = engine(messages, agent, args.num_agents, temperature=args.variant_temperature)
+                
+                # 3. Update Histories
+                # responses_default: All agents update with their DEFAULT generation
+                responses_default = dict(zip(agent_names, res_def))
+                
+                # responses_variant: All agents update with their VARIANT generation
+                responses_variant = dict(zip(agent_names, res_var))
+                
+                # For evaluation/logging, we primarily care about the Target Agent's behavior in the Variant Universe
+                # But the 'main' flow usually tracks 'responses' (which we map to responses_default usually?)
+                # Wait, if we want to measure effect on Target Agent, we should look at responses_variant[target]
+                
+                # Mapping for evaluation
+                # We will output the VARIANT set because that contains the experimental data for the Target Agent
+                agent_responses = responses_variant
+                
+                # For consistency with the rest of the script, we alias responses to responses_default for continuity if needed?
+                # Actually, let's keep 'agent_responses' as the one we verify.
+                
+                # Also print overlap for debugging
+                if args.verbose:
+                    print(f"Target Agent ({args.target_agent_index}) Variant Response start: {res_var[args.target_agent_index][:50]}...")
+                    print(f"Target Agent ({args.target_agent_index}) Default Response start: {res_def[args.target_agent_index][:50]}...")
+
             else:
-                new_agent_messages = get_new_message(args, x, agent_responses, suffix=SUFFIX)
-            messages = list(new_agent_messages.values())
-            responses = engine(messages, agent, args.num_agents)
-            agent_responses = dict(zip(agent_names, responses))
+                # STANDARD FLOW
+                if args.multi_persona:
+                    new_agent_messages = get_new_message(args, x, agent_responses, personas, suffix=SUFFIX)
+                else:
+                    new_agent_messages = get_new_message(args, x, agent_responses, suffix=SUFFIX)
+                messages = list(new_agent_messages.values())
+                responses = engine(messages, agent, args.num_agents)
+                agent_responses = dict(zip(agent_names, responses))
+
 
             # evaluate
+            # logic remains same, we use 'agent_responses' which is set above
             if args.centralized:
                 central_agent_response = {list(agent_responses.keys())[0] : list(agent_responses.values())[0]}
                 final_resps, debate_resps, is_corr = evaluate(central_agent_response, y)
             else :
                 final_resps, debate_resps, is_corr = evaluate(agent_responses, y)
 
-            print("\n\n" + str(messages[0]) + "\n\n")
-            print(f"ROUND {r} : {final_resps} (answer = {y})")
+            # print("\n\n" + str(messages[0]) + "\n\n")
+            # print(f"ROUND {r} : {final_resps} (answer = {y})")
+            
+            # Logic to capture Dual Data in output
+            responses_log = agent_responses
+            if args.variant_temperature is not None:
+                # Augment log with both
+                responses_log = {
+                    'variant': responses_variant,
+                    'default': responses_default
+                }
+
             if args.data in ['arithmetics','gsm8k']:
                 round_data = {
-                    'responses': agent_responses,
+                    'responses': responses_log, # Modified to store both if exp
                     'final_answers': final_resps,
                     'final_answer_iscorr': [y_pred == np.round(y,1) for y_pred in final_resps],
                     'debate_answer': debate_resps,
@@ -267,7 +349,7 @@ def main(args):
                     rougeL = s['rougeL'].fmeasure
                     scores.append((rouge1, rouge2, rougeL))
                 round_data = {
-                    'responses': agent_responses,
+                    'responses': responses_log,
                     'final_answers': final_resps,
                     'final_answer_iscorr': scores,
                     'debate_answer': debate_resps,
@@ -276,7 +358,7 @@ def main(args):
                 }
             else :
                 round_data = {
-                    'responses': agent_responses,
+                    'responses': responses_log,
                     'final_answers': final_resps,
                     'final_answer_iscorr': [y_pred == y for y_pred in final_resps],
                     'debate_answer': debate_resps,
@@ -286,11 +368,21 @@ def main(args):
             rounds_data_dict[str(r)] = round_data
             round_iscorr.append(is_corr)
 
-        sample_responses.append(rounds_data_dict)
         iscorr_list.append(round_iscorr)
+        
+        # Add cumulative accuracy to the current record
+        try:
+            cum_accs = np.array(iscorr_list).mean(0).tolist()
+            rounds_data_dict['cumulative_accuracy'] = cum_accs
+        except:
+            pass 
+
+        sample_responses.append(rounds_data_dict)
 
         # Save to jsonl
         print(len(sample_responses))
+        if os.path.dirname(f'out/history/{fname}.jsonl'):
+            os.makedirs(os.path.dirname(f'out/history/{fname}.jsonl'), exist_ok=True)
         with open(f'out/history/{fname}.jsonl', 'w') as f:
             for record in sample_responses:
                 f.write(json.dumps(record, default=convert_numpy) + '\n')
@@ -310,6 +402,8 @@ def main(args):
             for i, acc in enumerate(round_accs) :
                 print(f'Round {i} Acc.: {acc:.4f}')
     
+    if os.path.dirname('out/logs.tsv'):
+        os.makedirs(os.path.dirname('out/logs.tsv'), exist_ok=True)
     with open('out/logs.tsv', 'a') as f :
         line = f"\n{args.timestamp}\t{fname}\t{round_accs}"
         f.writelines(line)
