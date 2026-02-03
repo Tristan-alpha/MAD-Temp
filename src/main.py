@@ -156,7 +156,7 @@ def main(args):
     if args.multi_persona : fname += '_HETERO'
 
     if args.target_round != -1:
-        fname += f"_TR={args.target_round}_TA={args.target_agent_idx}_TT={args.target_temp}"
+        fname += f"_TR={args.target_round}_TT={args.target_temp}"
 
     agent_names = []
     for i in range(args.num_agents):
