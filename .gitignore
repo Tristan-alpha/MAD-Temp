@@ -2,3 +2,5 @@ out/
 token
 datasets/
 models/
+__pycache__/
+*.pyc
