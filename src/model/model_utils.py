@@ -3,12 +3,20 @@
 model_dirs = {
     'llama3.1-8b': 'meta-llama/Meta-Llama-3.1-8B-Instruct',
     'qwen2.5-7b': 'Qwen/Qwen2.5-7B-Instruct',
-    'qwen2.5-32b': 'Qwen/Qwen2.5-32B-Instruct'
+    'qwen2.5-32b': 'Qwen/Qwen2.5-32B-Instruct',
+    # Qwen3 models
+    'qwen3-8b': 'Qwen/Qwen3-8B',
+    'qwen3-4b': 'Qwen/Qwen3-4B-Instruct-2507',
+    'qwen3-4b-base': 'Qwen/Qwen3-4B',
+    'qwen3-4b-thinking': 'Qwen/Qwen3-4B-Thinking-2507',
+    'qwen3-30b-a3b': 'Qwen/Qwen3-30B-A3B-Instruct-2507',
+    'qwen3-30b-a3b-base': 'Qwen/Qwen3-30B-A3B',
+    'qwen3-235b-a22b': 'Qwen/Qwen3-235B-A22B-Instruct-2507',
 }
 
 
 
-def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None):
+def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None, max_new_tokens=512):
     if isinstance(temperatures, (float, int)):
         temperatures = [temperatures] * num_agents
 
@@ -34,19 +42,25 @@ def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None)
         input_ids = inputs['input_ids'].to(agent.huggingface_model.device)
         attention_mask = inputs['attention_mask'].to(agent.huggingface_model.device)
 
-        outputs = agent.huggingface_model.generate(
-            input_ids,
-            attention_mask=attention_mask,
-            pad_token_id=agent.tokenizer.eos_token_id,
-            max_new_tokens=512,
-            return_dict_in_generate=True,
-            output_scores=True,
-            do_sample=True,
-            temperature=temp,
-            top_p=0.9,
-            num_return_sequences=1,
-            return_legacy_cache=True
-        )
+        gen_kwargs = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "pad_token_id": agent.tokenizer.eos_token_id,
+            "max_new_tokens": max_new_tokens,
+            "return_dict_in_generate": True,
+            "output_scores": True,
+            "do_sample": (temp > 0),
+            "temperature": temp if temp > 0 else 1.0,
+            "num_return_sequences": 1,
+            "return_legacy_cache": True
+        }
+        if temp > 0:
+            gen_kwargs["top_p"] = 0.9
+        else:
+            gen_kwargs["top_p"] = None
+            gen_kwargs["top_k"] = None
+
+        outputs = agent.huggingface_model.generate(**gen_kwargs)
 
         generated_sequences = outputs.sequences  # shape: (batch_size * num_agents, seq_len)
 
@@ -70,6 +84,10 @@ def get_agents(args, peft_path=None):
     elif args.model in ['qwen2.5-7b','qwen2.5-32b'] :
         from model.qwen import QwenWrapper
         agent = QwenWrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+    
+    elif args.model in ['qwen3-8b', 'qwen3-4b-base', 'qwen3-4b', 'qwen3-30b-a3b', 'qwen3-30b-a3b-base', 'qwen3-235b-a22b', 'qwen3-4b-thinking']:
+        from model.qwen3 import Qwen3Wrapper
+        agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
     
     else:
         raise ValueError("invalid model!")

@@ -70,6 +70,7 @@ def get_args():
     parser.add_argument('--target_agent_idx', type=int, default=0, help="Agent index to modify temperature")
     parser.add_argument('--target_temp', type=float, default=1.0, help="Temperature for the target agent in target round")
 
+    parser.add_argument('--max_new_tokens', type=int, default=512, help="Max new tokens for generation")
 
     return parser.parse_args()
 
@@ -157,6 +158,8 @@ def main(args):
 
     if args.target_round != -1:
         fname += f"_TR={args.target_round}_TT={args.target_temp}"
+    if args.max_new_tokens != 512:
+        fname += f"_MNT={args.max_new_tokens}"
 
     agent_names = []
     for i in range(args.num_agents):
@@ -189,6 +192,15 @@ def main(args):
 
 
     for i, (x, y) in tqdm(enumerate(zip(test_X, test_Y)), total=len(test_X)):
+        # Reset seed per sample to ensure independence across samples
+        # This prevents changes in earlier samples (e.g. Round 1 modification) 
+        # from affecting the RNG state of later samples' Round 0.
+        current_seed = args.seed + i
+        torch.manual_seed(current_seed)
+        np.random.seed(current_seed)
+        random.seed(current_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(current_seed)
 
         print('\n\nQuestion: ', x + SUFFIX, '\n')
 
@@ -207,7 +219,7 @@ def main(args):
         if args.target_round == 0:
             temperatures[args.target_agent_idx] = args.target_temp
 
-        responses = engine(messages, agent, args.num_agents, temperatures=temperatures)
+        responses = engine(messages, agent, args.num_agents, temperatures=temperatures, max_new_tokens=args.max_new_tokens)
         agent_responses = dict(zip(agent_names, responses))
 
         # evaluate
@@ -257,7 +269,7 @@ def main(args):
             if args.target_round == r:
                 temperatures[args.target_agent_idx] = args.target_temp
 
-            responses = engine(messages, agent, args.num_agents, temperatures=temperatures)
+            responses = engine(messages, agent, args.num_agents, temperatures=temperatures, max_new_tokens=args.max_new_tokens)
             agent_responses = dict(zip(agent_names, responses))
 
             # evaluate
@@ -312,7 +324,11 @@ def main(args):
         # Save to jsonl
         print("")
         print(len(sample_responses))
-        with open(f'out/history/{fname}.jsonl', 'w') as f:
+        output_dir = os.path.join("out/history", args.data)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        with open(f'{output_dir}/{fname}.jsonl', 'w') as f:
             for record in sample_responses:
                 f.write(json.dumps(record, default=convert_numpy) + '\n')
             
