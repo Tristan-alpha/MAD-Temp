@@ -1,4 +1,6 @@
 
+import gc
+import torch
 
 model_dirs = {
     'llama3.1-8b': 'meta-llama/Meta-Llama-3.1-8B-Instruct',
@@ -48,11 +50,10 @@ def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None,
             "pad_token_id": agent.tokenizer.eos_token_id,
             "max_new_tokens": max_new_tokens,
             "return_dict_in_generate": True,
-            "output_scores": True,
+            "output_scores": False,
             "do_sample": (temp > 0),
             "temperature": temp if temp > 0 else 1.0,
             "num_return_sequences": 1,
-            "return_legacy_cache": True
         }
         if temp > 0:
             gen_kwargs["top_p"] = 0.9
@@ -68,6 +69,10 @@ def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None,
             gen_only = sequence[len(input_id):]
             decoded = agent.tokenizer.decode(gen_only, skip_special_tokens=True)
             responses[idx] = decoded
+
+        del outputs, generated_sequences, input_ids, attention_mask
+        gc.collect()
+        torch.cuda.empty_cache()
 
     return responses 
 
