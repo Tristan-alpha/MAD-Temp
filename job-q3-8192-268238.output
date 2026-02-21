@@ -1,0 +1,240 @@
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
+Starting Experiment 1: Modifying Round 2
+Running Round 2, Agent 0, Temp 0
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 0.5
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 1.0
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 1.5
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 2.0
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 5.0
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 10.0
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+Running Round 2, Agent 0, Temp 20.0
+Traceback (most recent call last):
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 374, in <module>
+    main(args)
+  File "/export/home3/dazhou/debate-or-vote/src/main.py", line 146, in main
+    agent, personas = get_agents(args)
+  File "/export/home3/dazhou/debate-or-vote/src/model/model_utils.py", line 95, in get_agents
+    agent = Qwen3Wrapper(args, model_dirs[args.model], memory_for_model_activations_in_gb=args.memory_for_model_activations_in_gb, lora_adapter_path=peft_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 40, in __init__
+    self.huggingface_model = load_model(args, model_dir, memory_for_model_activations_in_gb, lora_adapter_path)
+  File "/export/home3/dazhou/debate-or-vote/src/model/qwen3.py", line 15, in load_model
+    model = AutoModelForCausalLM.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 600, in from_pretrained
+    return model_class.from_pretrained(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 317, in _wrapper
+    return func(*args, **kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4994, in from_pretrained
+    model = cls(config, *model_args, **model_kwargs)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/models/qwen3/modeling_qwen3.py", line 430, in __init__
+    super().__init__(config)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2228, in __init__
+    self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2760, in _check_and_adjust_attn_implementation
+    attn_implementation = self.get_correct_attn_implementation(applicable_attn_implementation, is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2792, in get_correct_attn_implementation
+    self._flash_attn_2_can_dispatch(is_init_check)
+  File "/export/home3/dazhou/miniconda3/envs/venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 2499, in _flash_attn_2_can_dispatch
+    raise ValueError(
+ValueError: FlashAttention2 has been toggled on, but it cannot be used due to the following error: Flash Attention 2 is not available on CPU. Please make sure torch can access a CUDA device.
+All experiments completed.
+slurmstepd: error: NVML: Failed to get Compute running process count(3): Not Supported
