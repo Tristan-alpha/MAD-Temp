@@ -14,6 +14,7 @@ ROUGE = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'])
 from model.model_utils import get_agents, engine
 from data.data_utils import load_data
 from evaluator import get_instruction_suffix, evaluate_arithmetics, evaluate_mcq, base_evaluate_arithmetics, base_evaluate_mcq, evaluate_gen
+from temp_selector import build_temperature_selector
 
 
 
@@ -71,6 +72,16 @@ def get_args():
     parser.add_argument('--target_temp', type=float, default=1.0, help="Temperature for the target agent in target round")
 
     parser.add_argument('--max_new_tokens', type=int, default=512, help="Max new tokens for generation")
+
+    # adaptive temperature selector
+    parser.add_argument('--temp_selector', type=str, default='static', choices=['static', 'textgrad'], help="Selector backend for adaptive temperature updates")
+    parser.add_argument('--temp_selector_mode', type=str, default='off', choices=['off', 'adaptive'], help="Use 'adaptive' to enable dynamic temperature updates")
+    parser.add_argument('--temp_selector_state_path', type=str, default='', help="Optional JSON path to save/load selector state")
+    parser.add_argument('--temp_selector_min_temp', type=float, default=0.0, help="Minimum allowed temperature for adaptive selector")
+    parser.add_argument('--temp_selector_max_temp', type=float, default=2.0, help="Maximum allowed temperature for adaptive selector")
+    parser.add_argument('--temp_selector_step', type=float, default=0.2, help="Step size for heuristic adaptive updates")
+    parser.add_argument('--temp_selector_apply_to', type=str, default='all', choices=['all', 'target_agent'], help="Apply adaptive temperature to all agents or only target_agent_idx")
+    parser.add_argument('--textgrad_backward_engine', type=str, default='', help="TextGrad backward engine, e.g. experimental:gpt-4o-mini")
 
     return parser.parse_args()
 
@@ -156,8 +167,10 @@ def main(args):
     if args.bae : fname += '_BAE'
     if args.multi_persona : fname += '_HETERO'
 
-    if args.target_round != -1:
+    if args.target_round != -1 or args.temp_selector_mode == 'adaptive':
         fname += f"_TR={args.target_round}_TT={args.target_temp}"
+    if args.temp_selector_mode == 'adaptive':
+        fname += f"_TS={args.temp_selector}"
     if args.max_new_tokens != 512:
         fname += f"_MNT={args.max_new_tokens}"
 
@@ -185,6 +198,9 @@ def main(args):
     else :
         raise NotImplementedError
 
+    temp_selector = build_temperature_selector(args, num_agents=args.num_agents)
+    selector_run_meta = temp_selector.metadata()
+
     
     # Debate
     sample_responses = []
@@ -202,6 +218,8 @@ def main(args):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(current_seed)
 
+        temp_selector.start_sample(i)
+
         print('\n\nQuestion: ', x + SUFFIX, '\n')
 
         # initialize opinions
@@ -215,9 +233,7 @@ def main(args):
             messages = [{"role": "user", "content": x + SUFFIX}] * args.num_agents
         
         # Determine temperatures for Round 0
-        temperatures = [1.0] * args.num_agents
-        if args.target_round == 0:
-            temperatures[args.target_agent_idx] = args.target_temp
+        temperatures = temp_selector.get_temperatures(round_idx=0)
 
         responses = engine(messages, agent, args.num_agents, temperatures=temperatures, max_new_tokens=args.max_new_tokens)
         agent_responses = dict(zip(agent_names, responses))
@@ -248,8 +264,19 @@ def main(args):
                 'debate_answer_iscorr': is_corr,
                 'answer': y,
             }
+
+        if args.temp_selector_mode == 'adaptive':
+            round_data['temperatures'] = temperatures
+
         rounds_data_dict = {'0': round_data}
         round_iscorr.append(is_corr)
+        temp_selector.observe_round(
+            round_idx=0,
+            signals={
+                'responses': agent_responses,
+                'final_answers': final_resps,
+            },
+        )
 
         start = 1
 
@@ -265,9 +292,7 @@ def main(args):
             messages = list(new_agent_messages.values())
 
             # Determine temperatures for Round r
-            temperatures = [1.0] * args.num_agents
-            if args.target_round == r:
-                temperatures[args.target_agent_idx] = args.target_temp
+            temperatures = temp_selector.get_temperatures(round_idx=r)
 
             responses = engine(messages, agent, args.num_agents, temperatures=temperatures, max_new_tokens=args.max_new_tokens)
             agent_responses = dict(zip(agent_names, responses))
@@ -315,8 +340,25 @@ def main(args):
                     'debate_answer_iscorr': is_corr,
                     'answer': y,
                 }
+
+            if args.temp_selector_mode == 'adaptive':
+                round_data['temperatures'] = temperatures
+
             rounds_data_dict[str(r)] = round_data
             round_iscorr.append(is_corr)
+            temp_selector.observe_round(
+                round_idx=r,
+                signals={
+                    'responses': agent_responses,
+                    'final_answers': final_resps,
+                },
+            )
+
+        if args.temp_selector_mode == 'adaptive':
+            rounds_data_dict['__selector__'] = {
+                'run_config': selector_run_meta,
+                'sample_state': temp_selector.sample_state(),
+            }
 
         sample_responses.append(rounds_data_dict)
         iscorr_list.append(round_iscorr)
@@ -350,6 +392,9 @@ def main(args):
     with open('out/logs.tsv', 'a') as f :
         line = f"\n{args.timestamp}\t{fname}\t{round_accs}"
         f.writelines(line)
+
+    if args.temp_selector_mode == 'adaptive':
+        temp_selector.save_state()
 
 
 

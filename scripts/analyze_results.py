@@ -21,8 +21,11 @@ def get_args():
 
 def extract_and_save(dataset_filter=None, history_dir=HISTORY_DIR):
     # Pattern to match filenames: e.g., gsm8k_50__qwen2.5-7b_N=3_R=3_TR=1_TT=0.1.jsonl
-    # Also supports optional _MNT=8192 suffix: gsm8k_500__qwen3-4b_N=3_R=3_TR=2_TT=0.0_MNT=8192.jsonl
-    pattern = re.compile(r"([a-zA-Z0-9_]+)_(\d+)__(.+?)_N=.*_TR=(\d+)_TT=([\d\.]+)(?:_MNT=(\d+))?\.jsonl")
+    # Also supports optional selector and _MNT suffixes:
+    # gsm8k_500__qwen3-4b_N=3_R=3_TR=2_TT=1.0_TS=textgrad_MNT=8192.jsonl
+    pattern = re.compile(
+        r"([a-zA-Z0-9_]+)_(\d+)__(.+?)_N=.*_TR=(-?\d+)_TT=([\d\.]+)(?:_TS=([a-zA-Z0-9_\-]+))?(?:_MNT=(\d+))?\.jsonl"
+    )
     
     results = []
     
@@ -43,7 +46,8 @@ def extract_and_save(dataset_filter=None, history_dir=HISTORY_DIR):
         model_name = match.group(3)
         tr = int(match.group(4))
         tt = float(match.group(5))
-        mnt = int(match.group(6)) if match.group(6) else 512  # default max_new_tokens
+        temp_selector = match.group(6) if match.group(6) else "static"
+        mnt = int(match.group(7)) if match.group(7) else 512  # default max_new_tokens
         
         # Filter by dataset if specified
         if dataset_filter and dataset_name != dataset_filter:
@@ -105,6 +109,7 @@ def extract_and_save(dataset_filter=None, history_dir=HISTORY_DIR):
             "model": model_name,
             "target_round": tr,
             "temperature": tt,
+            "temp_selector": temp_selector,
             "max_new_tokens": mnt,
             "round_accuracies": round_accuracies,
             "total_samples": total,
@@ -126,16 +131,17 @@ def visualize(results, dataset_filter=None, history_dir=HISTORY_DIR):
         print("No results to visualize.")
         return
 
-    # Group by dataset, model, data_size, max_new_tokens, then target_round
+    # Group by dataset, model, data_size, selector, max_new_tokens, then target_round
     grouped_data = {}
     for res in results:
         dataset = res.get('dataset', 'unknown')
         model = res.get('model', 'unknown')
         data_size = res.get('data_size', 0)
+        selector = res.get('temp_selector', 'static')
         mnt = res.get('max_new_tokens', 512)
         tr = res['target_round']
         
-        group_key = (dataset, model, data_size, mnt)
+        group_key = (dataset, model, data_size, selector, mnt)
         if group_key not in grouped_data:
             grouped_data[group_key] = {}
         if tr not in grouped_data[group_key]:
@@ -143,9 +149,10 @@ def visualize(results, dataset_filter=None, history_dir=HISTORY_DIR):
         
         grouped_data[group_key][tr].append(res)
     
-    for (dataset, model_name, data_size, mnt), grouped_by_tr in grouped_data.items():
+    for (dataset, model_name, data_size, selector, mnt), grouped_by_tr in grouped_data.items():
         mnt_label = f", MNT={mnt}" if mnt != 512 else ""
-        print(f"\nGenerating plots for dataset: {dataset}, model: {model_name}, size: {data_size}{mnt_label}")
+        selector_label = f", selector={selector}" if selector != "static" else ""
+        print(f"\nGenerating plots for dataset: {dataset}, model: {model_name}, size: {data_size}{selector_label}{mnt_label}")
         target_rounds = sorted(grouped_by_tr.keys())
     
         for tr in target_rounds:
@@ -179,15 +186,17 @@ def visualize(results, dataset_filter=None, history_dir=HISTORY_DIR):
                     plt.plot(temps, accs, marker='o', label=f'Round {r}')
             
             title_suffix = f" [MNT={mnt}]" if mnt != 512 else ""
-            plt.title(f'{dataset.upper()} ({model_name}, N={data_size}{title_suffix}): Accuracy vs Temperature (Target Round {tr})')
+            selector_title = f", selector={selector}" if selector != "static" else ""
+            plt.title(f'{dataset.upper()} ({model_name}, N={data_size}{selector_title}{title_suffix}): Accuracy vs Temperature (Target Round {tr})')
             plt.xlabel('Temperature')
             plt.ylabel('Accuracy')
             plt.legend(title="Round")
             plt.grid(True)
             
             safe_model_name = model_name.replace('/', '_')
+            selector_suffix = f"_TS={selector}" if selector != "static" else ""
             mnt_suffix = f"_MNT={mnt}" if mnt != 512 else ""
-            output_plot_path = os.path.join(history_dir, f'{dataset}_{safe_model_name}_N{data_size}_accuracy_plot_TR_{tr}{mnt_suffix}.png')
+            output_plot_path = os.path.join(history_dir, f'{dataset}_{safe_model_name}_N{data_size}_accuracy_plot_TR_{tr}{selector_suffix}{mnt_suffix}.png')
             plt.savefig(output_plot_path)
             print(f"Saved plot to {output_plot_path}")
             plt.close()

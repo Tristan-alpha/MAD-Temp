@@ -3,4 +3,8 @@ token
 datasets/
 models/
 __pycache__/
-*.pycdebate_visualizer_v2.html
+*.pyc
+debate_visualizer_v2.html
+job-*.output
+*.tar.gz
+logs/

@@ -131,6 +131,7 @@ dependencies:
       - sqlalchemy==2.0.41
       - sympy==1.13.3
       - tenacity==9.1.2
+      - textgrad==0.1.8
       - threadpoolctl==3.6.0
       - tiktoken==0.11.0
       - tokenizers==0.21.2
