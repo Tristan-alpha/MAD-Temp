@@ -14,16 +14,15 @@ DATA="formal_logic"
 SIZE=50
 AGENT_IDX=0 # First agent (0-indexed)
 
-# Temperatures to traverse
-TEMPS=(0.1 0.5 1.0 1.5 2.0 2.5)
+# Single baseline run (T=1.0 fixed in src/main.py)
+TEMPS=(1.0)
 
 
 
 echo "Starting Experiment 2: Modifying Round 2"
 for t in "${TEMPS[@]}"; do
-    echo "Running Round 2, Agent $AGENT_IDX, Temp $t"
+    echo "Running Round 2, Agent $AGENT_IDX"
     python -u src/main.py --model $MODEL --num_agents $AGENTS --data $DATA --data_size $SIZE --debate_rounds $ROUNDS \
-        --target_round 2 --target_agent_idx $AGENT_IDX --target_temp $t \
         --model_dir ./models \
         --data_dir ./datasets
 done

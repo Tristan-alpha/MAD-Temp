@@ -1,23 +1,22 @@
 # AGENTS.md
 
 ## Mission
-Build and evaluate a self-supervised automatic temperature selector for multi-agent debate, with the goal of improving final debate accuracy while preserving reproducibility and fair baseline comparisons.
+Build and evaluate TextGrad-based optimization for multi-agent debate, with the goal of improving final debate accuracy over majority voting while preserving reproducibility and fair baseline comparisons.
 
 ## Project Scope
 - Codebase focus:
 `src/main.py`, `src/evaluator.py`, `src/model/*`, `scripts/*.sh`, `scripts/analyze_results.py`.
 - Primary research question:
-How temperature choices (per round / per agent) affect debate dynamics and accuracy.
+How TextGrad-based strategy optimization affects debate dynamics and final accuracy.
 - Primary feature direction:
-Automatic temperature selection policy that can adapt during debate without leaking ground-truth labels at inference time.
+Self-supervised strategy updates that improve debate quality without leaking ground-truth labels at inference time.
 
 ## Non-Negotiable Rules
 - Keep default behavior unchanged unless an explicit flag enables new behavior.
-- Never break existing experiment filename conventions used in `out/history`.
 - Preserve reproducibility: deterministic seeds and logged config fields.
 - Do not mix analysis outputs from different dataset/model settings without explicit grouping keys.
 - Avoid label leakage:
-No use of reference answers to choose temperatures during inference.
+No use of reference answers to choose inference-time strategy.
 
 ## Required Start-of-Task Workflow
 For every coding task in this repository:
@@ -27,25 +26,21 @@ For every coding task in this repository:
 4. Propose minimal changes that preserve backward compatibility.
 5. After changes, run a targeted validation command and report result.
 
-## Temperature Selector Design Contract
-- Selector input may include only available signals at decision time, such as:
+## Strategy Optimization Contract
+- Optimization inputs may include only signals available at decision time, such as:
 prior-round responses, disagreement statistics, vote entropy, response length/format quality, and historical self-supervised reward estimates.
-- Selector output:
-temperature value(s) per round and optionally per agent.
-- Selector must support:
-`static` baseline mode and `adaptive` mode behind a flag.
+- Optimization must support:
+fixed baseline behavior and optional learned behavior behind explicit flags.
 - Self-supervised updates should rely on delayed/proxy feedback from debate outcomes, consistency, or agreement structure, not privileged labels during inference.
+- Generation temperature is fixed to `1.0`.
 
 ## Interface and Configuration Guidelines
 - Add new CLI args instead of overloading old ones.
-- Keep existing args functional:
-`--target_round`, `--target_agent_idx`, `--target_temp`, `--max_new_tokens`.
-- If adding adaptive logic, use explicit flags, e.g.:
-`--temp_selector`, `--temp_selector_mode`, `--temp_selector_state_path`.
-- Log selector configuration into output metadata for each run.
+- Keep existing args functional, including `--max_new_tokens`.
+- If adding optimization logic, use explicit flags and log configuration into output metadata for each run.
 
 ## Evaluation Protocol
-- Always compare against static-temperature baselines.
+- Always compare against fixed-strategy baselines (including majority vote).
 - Report at least:
 final debate accuracy, per-round accuracy trajectory, and variance across seeds.
 - Keep dataset-specific reporting separated (`gsm8k`, `arithmetics`, `csqa`, etc.).
@@ -58,7 +53,7 @@ final debate accuracy, per-round accuracy trajectory, and variance across seeds.
 
 ## Code Quality Expectations
 - Small, reviewable diffs.
-- Clear naming for selector state and reward signals.
+- Clear naming for optimization state and reward signals.
 - Add short comments only for non-obvious logic.
 - Add or update lightweight tests/check scripts when behavior changes.
 

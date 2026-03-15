@@ -9,4 +9,4 @@ import textgrad
 print(f"textgrad import OK: {textgrad.__version__}")
 PY
 
-echo "If you plan to use --temp_selector textgrad, set a provider API key first (for example OPENAI_API_KEY)."
+echo "Set a provider API key first (for example OPENAI_API_KEY) before calling remote TextGrad engines."

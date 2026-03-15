@@ -39,28 +39,7 @@ CUDA_VISIBLE_DEVICES=0 python src/main.py --model qwen2.5-7b --num_agents 5 --da
 
 To run Sparse MAD or Centralized MAD, add ```--sparse``` or ```--centralized``` to the command. To run heterogeneous agent settings, add ```--multi_persona```.
 
-
-## TextGrad Setup
-
-Install TextGrad into the same environment:
-
-```
-python -m pip install textgrad==0.1.8
-```
-
-For TextGrad-backed adaptive selector mode, set a provider key supported by TextGrad/litellm (for example, OpenAI):
-
-```
-export OPENAI_API_KEY=your_key
-```
-
-Example run (flag-gated, backward-compatible):
-
-```
-CUDA_VISIBLE_DEVICES=0 python src/main.py --model qwen3-4b --num_agents 3 --data gsm8k --data_size 500 --debate_rounds 3 --target_round -1 --target_temp 1.0 --temp_selector textgrad --temp_selector_mode adaptive --textgrad_backward_engine experimental:gpt-4o-mini --data_dir [your_directory] --model_dir [your_directory]
-```
-
-Default behavior remains unchanged unless ```--temp_selector_mode adaptive``` is explicitly set.
+Generation temperature is fixed at 1.0 in this repository.
 
 
 ## Citation

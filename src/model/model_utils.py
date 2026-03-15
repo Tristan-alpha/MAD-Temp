@@ -18,61 +18,44 @@ model_dirs = {
 
 
 
-def engine(messages, agent, num_agents=1, temperatures=1.0, stop_sequences=None, max_new_tokens=512):
-    if isinstance(temperatures, (float, int)):
-        temperatures = [temperatures] * num_agents
+def engine(messages, agent, num_agents=1, stop_sequences=None, max_new_tokens=512):
+    if len(messages) == 0:
+        return []
 
-    # Group messages by temperature
-    temp_groups = {}
-    for i, (msg, temp) in enumerate(zip(messages, temperatures)):
-        if temp not in temp_groups:
-            temp_groups[temp] = []
-        temp_groups[temp].append((i, msg))
+    if type(messages[0]) == list:
+        prompts = [agent.tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True) for m in messages]
+    else:
+        prompts = [msg['content'] for msg in messages]  # we find that NOT using chat template is better in MAD
 
+    inputs = agent.tokenizer(prompts, return_tensors='pt', padding=True, truncation=True)
+
+    input_ids = inputs['input_ids'].to(agent.huggingface_model.device)
+    attention_mask = inputs['attention_mask'].to(agent.huggingface_model.device)
+
+    outputs = agent.huggingface_model.generate(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        pad_token_id=agent.tokenizer.eos_token_id,
+        max_new_tokens=max_new_tokens,
+        return_dict_in_generate=True,
+        output_scores=False,
+        do_sample=True,
+        temperature=1.0,
+        top_p=0.9,
+        num_return_sequences=1,
+    )
+
+    generated_sequences = outputs.sequences  # shape: (batch_size * num_agents, seq_len)
     responses = [None] * len(messages)
 
-    for temp, group in temp_groups.items():
-        indices, msgs = zip(*group)
+    for idx, (input_id, sequence) in enumerate(zip(input_ids, generated_sequences)):
+        gen_only = sequence[len(input_id):]
+        decoded = agent.tokenizer.decode(gen_only, skip_special_tokens=True)
+        responses[idx] = decoded
 
-        if type(msgs[0]) == list :
-            prompts = [agent.tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True) for m in msgs]
-        else :
-            prompts = [msg['content'] for msg in msgs]  # we find that NOT using chat template is better in MAD
-        
-        inputs = agent.tokenizer(prompts, return_tensors='pt', padding=True, truncation=True)
-
-        input_ids = inputs['input_ids'].to(agent.huggingface_model.device)
-        attention_mask = inputs['attention_mask'].to(agent.huggingface_model.device)
-
-        gen_kwargs = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "pad_token_id": agent.tokenizer.eos_token_id,
-            "max_new_tokens": max_new_tokens,
-            "return_dict_in_generate": True,
-            "output_scores": False,
-            "do_sample": (temp > 0),
-            "temperature": temp if temp > 0 else 1.0,
-            "num_return_sequences": 1,
-        }
-        if temp > 0:
-            gen_kwargs["top_p"] = 0.9
-        else:
-            gen_kwargs["top_p"] = None
-            gen_kwargs["top_k"] = None
-
-        outputs = agent.huggingface_model.generate(**gen_kwargs)
-
-        generated_sequences = outputs.sequences  # shape: (batch_size * num_agents, seq_len)
-
-        for idx, input_id, sequence in zip(indices, input_ids, generated_sequences):
-            gen_only = sequence[len(input_id):]
-            decoded = agent.tokenizer.decode(gen_only, skip_special_tokens=True)
-            responses[idx] = decoded
-
-        del outputs, generated_sequences, input_ids, attention_mask
-        gc.collect()
-        torch.cuda.empty_cache()
+    del outputs, generated_sequences, input_ids, attention_mask
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return responses 
 
