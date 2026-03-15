@@ -363,6 +363,11 @@ if __name__ == "__main__":
     random.seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
+    
+    # Ensure full reproducibility across runs with different target_temp
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     args.timestamp = timestamp

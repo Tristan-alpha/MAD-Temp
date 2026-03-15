@@ -12,13 +12,17 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, DataCo
 def load_model(args, model_name_or_path, memory_for_model_activations_in_gb=2, peft_path=None):
     
     config = AutoConfig.from_pretrained(model_name_or_path, token=args.token)
+    
+    # Only use flash_attention_2 when CUDA is available
+    attn_impl = "flash_attention_2" if torch.cuda.is_available() else "eager"
+    
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path, 
         torch_dtype=torch.bfloat16,  # bfloat16 更适合 A100，且与 flash attention 2 兼容性更好
         device_map="auto", 
         token=args.token, 
         cache_dir=args.model_dir,
-        attn_implementation="flash_attention_2"  # Flash Attention 2
+        attn_implementation=attn_impl
     )
     
     return model
