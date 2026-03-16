@@ -202,3 +202,61 @@ At the end of this work:
 - SLURM launchers are present for train, eval, and all-in-one execution
 - the train path has been tested on the cluster and is running with the stable 2-GPU source-aligned configuration
 - evaluation should be run after training finishes and writes the optimized prompt history
+
+## Follow-up Rerun Note
+
+Later on 2026-03-16, the 2-GPU training job `342841` progressed through the first batch of forward passes but failed during `optimizer.step()`. The evaluator request exceeded the current `8192` serving window by one input token:
+
+- input tokens: `7681`
+- requested output tokens: `512`
+- effective maximum input length at `8192` context: `7680`
+
+This failure happened during the aggregated TextGrad optimization step rather than during debate generation. The next corrective action was to reduce `TRAIN_BATCH_SIZE` in `scripts/run_tg_mad_train_2gpu.sh` from `5` to `2` so the optimizer prompt stays smaller while preserving the same debate and generation settings.
+
+After rerunning with batch size `2`, the same failure still occurred during `optimizer.step()`. The useful timing split from job `342893` was:
+
+- batch forward pass for 2 samples: about `2m39s`
+- TextGrad backward pass before optimizer step: about `4m33s`
+
+The root cause remained the same: the optimizer update prompt for the evaluator exceeded the `8192` serving window. To address that more directly, I tested a local evaluator swap from `Qwen3-8B` to `Qwen3-30B-A3B-Instruct-2507`, together with a larger evaluator serving window (`16384`) and lower evaluator concurrency (`max-num-seqs=1`). The TextGrad engine was also updated not to retry deterministic `400 Bad Request` context-length errors.
+
+That 30B-A3B instruct evaluator did not start successfully under the current local vLLM setup. The server failed during model load with CUDA OOM on a single 47 GB GPU. So the practical local default was restored to `Qwen3-8B`, while keeping the useful non-retry behavior for deterministic `400` errors. The 30B-A3B instruct path remains a reasonable quality experiment if more GPU memory, tensor parallelism, quantization, or a remote API backend is available.
+
+## 2026-03-16 30B / 1-Round Rerun
+
+After reviewing job `342898`, the failure reason was still a context overflow during `optimizer.step()`, now at the larger evaluator window:
+
+- input tokens: `15873`
+- requested output tokens: `512`
+- evaluator context length: `16384`
+- maximum allowed input tokens at that setting: `15872`
+
+To reduce optimizer prompt size without compressing the serving window, I made the following backward-compatible changes:
+
+- added `--debate_prompt_mode` to `tg_mad/train.py` and `tg_mad/evaluate.py`
+- added `compact_second_round` prompt handling in `tg_mad/forward_pass.py`
+- exposed `TRAIN_N_AGENTS`, `TRAIN_N_ROUNDS`, `TRAIN_SIZE`, `DEBATE_PROMPT_MODE`, and `EVALUATOR_ENGINE_MODEL` in `scripts/run_tg_mad_train_2gpu.sh`
+- exposed `EVAL_N_AGENTS`, `EVAL_N_ROUNDS`, and `DEBATE_PROMPT_MODE` in `scripts/run_tg_mad_eval_1gpu.sh`
+- added a dedicated 3-GPU launcher: `scripts/run_tg_mad_train_30b_3gpu.sh`
+
+The new 30B launcher is configured for:
+
+- batch size `1`
+- `t0` plus one debate round (`n_rounds=1`)
+- compact second-round debate prompt
+- `Qwen/Qwen3-30B-A3B-Instruct-2507` evaluator over 2 GPUs with tensor parallel size `2`
+- `16384` max model length for both debater and evaluator
+- separate output directory: `out/tg_mad_30b_r1_bs1`
+
+- First submission of `run_tg_mad_train_30b_3gpu.sh` failed immediately because SLURM executed the wrapper from its spool directory, so the relative call to `run_tg_mad_train_2gpu.sh` resolved to a missing path. The wrapper now changes into the repo root and calls the generic launcher by absolute path.
+
+The rerun submitted as job `342916` succeeded past the previous failure point:
+
+- debater healthy on GPU `0`
+- 30B evaluator healthy on GPUs `1,2` with tensor parallel size `2`
+- batch size `1`
+- `n_rounds=1` (`t0` + one debate round)
+- `compact_second_round` debate prompt mode
+- `16384` max model length for both servers
+
+Most importantly, batch `0` completed its backward pass and `optimizer.step()` successfully. This confirms that the earlier optimizer-step context overflow was resolved by the combined change set rather than only delayed.
