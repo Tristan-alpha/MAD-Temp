@@ -1,5 +1,6 @@
 out/
 token
+.env
 datasets/
 models/
 __pycache__/
@@ -8,3 +9,4 @@ debate_visualizer_v2.html
 job-*.output
 *.tar.gz
 logs/
+node_modules/
