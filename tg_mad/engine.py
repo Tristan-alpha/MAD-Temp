@@ -1,8 +1,9 @@
-"""Custom VLLMEngine for TextGrad that routes to specific vLLM server endpoints.
+"""Custom engine for TextGrad that routes to OpenAI-compatible API endpoints.
 
 TextGrad's built-in LiteLLMEngine does not pass api_base to litellm.completion(),
-making it impossible to route to different vLLM servers on different ports.
-This engine inherits from the same base class and adds api_base support.
+making it impossible to route to different servers. This engine inherits from the
+same base class and adds api_base + api_key support, working with both local vLLM
+servers and remote API providers (e.g. kimi-k2.5).
 """
 
 import os
@@ -30,12 +31,15 @@ class VLLMEngine(EngineLM):
         top_p: float = TOP_P,
         is_multimodal: bool = False,
         cache: Union[dc.Cache, bool] = False,
+        api_key: str = None,
     ):
         """
         :param model_string: litellm model string, e.g. "hosted_vllm/Qwen/Qwen3-4B-Instruct-2507"
-        :param base_url: vLLM server URL, e.g. "http://localhost:8000/v1"
+                             or "openai/kimi-k2.5" for API providers
+        :param base_url: Server URL, e.g. "http://localhost:8000/v1" or API endpoint
         :param temperature: Sampling temperature (1.0 for debater, 0.7 for evaluator)
         :param max_tokens: Max tokens for generation
+        :param api_key: API key. Defaults to OPENAI_API_KEY env var (or "EMPTY" for local vLLM).
         """
         super().__init__(
             model_string=model_string,
@@ -47,6 +51,7 @@ class VLLMEngine(EngineLM):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "EMPTY")
 
     @cached
     @retry(wait=wait_random_exponential(min=1, max=5), stop=stop_after_attempt(5))
@@ -72,7 +77,7 @@ class VLLMEngine(EngineLM):
             model=self.model_string,
             messages=messages,
             api_base=self.base_url,
-            api_key=os.environ.get("OPENAI_API_KEY", "EMPTY"),
+            api_key=self.api_key,
             temperature=temp,
             max_tokens=tokens,
             top_p=nucleus,
@@ -130,5 +135,41 @@ def create_evaluator_engine(
         base_url=base_url or EVALUATOR_BASE_URL,
         temperature=temperature if temperature is not None else EVALUATOR_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else MAX_NEW_TOKENS,
+        cache=False,
+    )
+
+
+def create_api_evaluator_engine(
+    model: str = None,
+    base_url: str = None,
+    api_key: str = None,
+    temperature: float = None,
+    max_tokens: int = None,
+) -> VLLMEngine:
+    """Factory for API-based evaluator/backward engine (e.g. kimi-k2.5).
+
+    Uses a remote OpenAI-compatible API instead of a local vLLM server,
+    avoiding GPU memory pressure from hosting a second model locally.
+    """
+    from tg_mad.config import (
+        API_EVALUATOR_MODEL,
+        API_EVALUATOR_BASE_URL,
+        API_EVALUATOR_MAX_TOKENS,
+        EVALUATOR_TEMPERATURE,
+    )
+
+    resolved_key = api_key or os.environ.get("KIMI_API_KEY")
+    if not resolved_key:
+        raise ValueError(
+            "API evaluator requires an API key. "
+            "Pass --evaluator_api_key or set KIMI_API_KEY env var."
+        )
+
+    return VLLMEngine(
+        model_string=model or API_EVALUATOR_MODEL,
+        base_url=base_url or API_EVALUATOR_BASE_URL,
+        api_key=resolved_key,
+        temperature=temperature if temperature is not None else EVALUATOR_TEMPERATURE,
+        max_tokens=max_tokens if max_tokens is not None else API_EVALUATOR_MAX_TOKENS,
         cache=False,
     )

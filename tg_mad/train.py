@@ -25,7 +25,7 @@ from tg_mad.config import (
     TEMPERATURE,
     TRAIN_SIZE,
 )
-from tg_mad.engine import create_debater_engine, create_evaluator_engine
+from tg_mad.engine import create_debater_engine, create_evaluator_engine, create_api_evaluator_engine
 from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
 from tg_mad.forward_pass import mad_forward_pass
 from tg_mad.evaluator import create_evaluator_loss
@@ -61,6 +61,20 @@ def parse_args():
         action="store_true",
         help="Continue with placeholder text if the debater backend fails.",
     )
+    # API evaluator options
+    parser.add_argument(
+        "--evaluator_type",
+        type=str,
+        default="local",
+        choices=["local", "api"],
+        help="Evaluator backend: 'local' for vLLM Qwen3-8B, 'api' for remote API (e.g. kimi-k2.5).",
+    )
+    parser.add_argument("--evaluator_api_key", type=str, default=None,
+                        help="API key for remote evaluator (or set KIMI_API_KEY env var).")
+    parser.add_argument("--evaluator_model", type=str, default=None,
+                        help="Override evaluator model string (e.g. 'openai/kimi-k2.5').")
+    parser.add_argument("--evaluator_api_base_url", type=str, default=None,
+                        help="Override evaluator API base URL.")
     return parser.parse_args()
 
 
@@ -86,6 +100,7 @@ def build_run_config(args, artifact_paths):
         "data_dir": args.data_dir,
         "existing_data": args.existing_data,
         "allow_failed_generations": args.allow_failed_generations,
+        "evaluator_type": args.evaluator_type,
     }
 
 
@@ -112,10 +127,20 @@ def train(args):
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
     )
-    evaluator_engine = create_evaluator_engine(
-        base_url=args.evaluator_base_url,
-        max_tokens=args.evaluator_max_new_tokens,
-    )
+    if args.evaluator_type == "api":
+        logger.info("Using API-based evaluator engine")
+        evaluator_engine = create_api_evaluator_engine(
+            model=args.evaluator_model,
+            base_url=args.evaluator_api_base_url,
+            api_key=args.evaluator_api_key,
+            max_tokens=args.evaluator_max_new_tokens,
+        )
+    else:
+        logger.info("Using local vLLM evaluator engine")
+        evaluator_engine = create_evaluator_engine(
+            base_url=args.evaluator_base_url,
+            max_tokens=args.evaluator_max_new_tokens,
+        )
 
     # Set global backward engine for TextGrad
     tg.set_backward_engine(evaluator_engine)

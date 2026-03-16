@@ -53,8 +53,9 @@ OPTIMIZER_CONSTRAINTS = [
     "The prompt must not exceed 500 words.",
 ]
 
-# === Evaluator swap ===
-# To switch to MiniMax M2.5:
-# 1. Change EVALUATOR_MODEL to the appropriate litellm string
-# 2. Set MINIMAX_API_KEY in environment
-# 3. No other code changes needed
+# === API Evaluator (kimi-k2.5 via OpenAI-compatible endpoint) ===
+# Used with --evaluator_type api to avoid GPU memory pressure from local Qwen3-8B.
+# API key: set KIMI_API_KEY env var or pass --evaluator_api_key.
+API_EVALUATOR_MODEL = "openai/kimi-k2.5"
+API_EVALUATOR_BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3"
+API_EVALUATOR_MAX_TOKENS = 2048  # API model has larger context, can generate more
