@@ -77,10 +77,13 @@ echo "=== TG-MAD Training (API Evaluator) ==="
 echo "Node: $(hostname)"
 date
 
-# Validate API key
+# Load API key from .env if not already set
+if [[ -z "${KIMI_API_KEY:-}" ]] && [[ -f .env ]]; then
+    source .env
+fi
 if [[ -z "${KIMI_API_KEY:-}" ]]; then
     echo "ERROR: KIMI_API_KEY env var is not set."
-    echo "Export it before running: export KIMI_API_KEY=your_key_here"
+    echo "Either: export KIMI_API_KEY=your_key, or put 'export KIMI_API_KEY=...' in .env"
     exit 1
 fi
 

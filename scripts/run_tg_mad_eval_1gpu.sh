@@ -16,8 +16,14 @@ DEBATER_PORT="${DEBATER_PORT:-8000}"
 DEBATER_URL="http://${SERVER_HOST}:${DEBATER_PORT}/v1"
 OUTPUT_DIR="${OUTPUT_DIR:-out/tg_mad}"
 PROMPT_HISTORY_PATH="${PROMPT_HISTORY_PATH:-${OUTPUT_DIR%/}/prompt_history.json}"
+SPLIT_INFO_PATH="${SPLIT_INFO_PATH:-}"
+RESULTS_FILE_PATH="${RESULTS_FILE_PATH:-}"
+RUN_CONFIG_FILE_PATH="${RUN_CONFIG_FILE_PATH:-}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-600}"
 EVAL_SEED="${EVAL_SEED:-42}"
+EVAL_N_AGENTS="${EVAL_N_AGENTS:-3}"
+EVAL_N_ROUNDS="${EVAL_N_ROUNDS:-3}"
+EVAL_MAX_TEST_SAMPLES="${EVAL_MAX_TEST_SAMPLES:-}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-512}"
 JOB_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-}"
 DEBATER_GPU_SLOTS="${DEBATER_GPU_SLOTS:-0}"
@@ -160,12 +166,29 @@ DEBATER_PID=$!
 wait_for_health "debater" "http://${SERVER_HOST}:${DEBATER_PORT}/health" "${DEBATER_LOG}" "${DEBATER_PID}"
 
 echo "Running TG-MAD evaluation..."
-python -u tg_mad/evaluate.py \
+eval_args=(
     --debater_base_url "${DEBATER_URL}" \
     --prompt_history "${PROMPT_HISTORY_PATH}" \
     --output_dir "${OUTPUT_DIR}" \
+    --n_agents "${EVAL_N_AGENTS}" \
+    --n_rounds "${EVAL_N_ROUNDS}" \
     --max_new_tokens "${MAX_NEW_TOKENS}" \
     --seed "${EVAL_SEED}"
+)
+if [[ -n "${SPLIT_INFO_PATH}" ]]; then
+    eval_args+=(--split_info_file "${SPLIT_INFO_PATH}")
+fi
+if [[ -n "${RESULTS_FILE_PATH}" ]]; then
+    eval_args+=(--results_file "${RESULTS_FILE_PATH}")
+fi
+if [[ -n "${RUN_CONFIG_FILE_PATH}" ]]; then
+    eval_args+=(--run_config_file "${RUN_CONFIG_FILE_PATH}")
+fi
+if [[ -n "${EVAL_MAX_TEST_SAMPLES}" ]]; then
+    eval_args+=(--max_test_samples "${EVAL_MAX_TEST_SAMPLES}")
+fi
+
+python -u tg_mad/evaluate.py "${eval_args[@]}"
 
 echo "Evaluation complete."
 date
