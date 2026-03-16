@@ -25,6 +25,12 @@ For every coding task in this repository:
 3. Inspect relevant files before editing.
 4. Propose minimal changes that preserve backward compatibility.
 5. After changes, run a targeted validation command and report result.
+6. Update the daily diary file with a short summary of the changes made that day.
+
+## Daily Diary
+- Record each coding-task change in a diary file under `diary/` using the current date as the filename, for example `diary/2026-03-16.md`.
+- Append concise entries describing what changed, why, and any validation or run commands that were executed.
+- Keep diary updates additive so the day-by-day history remains easy to audit.
 
 ## Strategy Optimization Contract
 - Optimization inputs may include only signals available at decision time, such as:
@@ -50,6 +56,16 @@ final debate accuracy, per-round accuracy trajectory, and variance across seeds.
 - Keep outputs under `out/` and histories under `out/history`.
 - Do not overwrite prior results silently.
 - Any new output schema must remain JSONL-friendly and versioned with additive fields.
+
+## TG-MAD Operational Notes
+- For local vLLM serving, `localhost` means the current machine or SLURM job node. Train/eval must reach servers on the same node unless an explicit cross-node host is configured.
+- Training requires both the debater server and the evaluator/backward server at the same time. Evaluation only requires the debater server.
+- TextGrad failures can occur at `optimizer.step()` even when debate forward passes succeed. Treat the optimizer prompt length as a first-class constraint.
+- The main context-overflow mitigation that worked in practice was: batch size `1`, `n_rounds=1` (`t0` plus one debate round), a shorter second-round debate prompt, and `max_model_len=16384`.
+- `Qwen/Qwen3-30B-A3B-Instruct-2507` did not fit as a local vLLM evaluator on one 47 GB GPU, but it did start successfully with tensor parallel size `2` across two GPUs.
+- For SLURM wrapper scripts that call other repo scripts, use an absolute repo path or `cd` into the repo root first. SLURM may execute a copied script from its spool directory, which breaks relative paths.
+- Keep deterministic `400 Bad Request` context-length errors fail-fast. Retrying them only wastes time and hides the real bottleneck.
+- Use separate `output_dir` values for materially different TG-MAD experiments so prompt histories and eval artifacts are not mixed silently.
 
 ## Code Quality Expectations
 - Small, reviewable diffs.
