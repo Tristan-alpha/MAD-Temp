@@ -11,9 +11,15 @@ from typing import Union, List
 
 import diskcache as dc
 from litellm import completion
+from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 from textgrad.engine_experimental.base import EngineLM, cached
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_random_exponential
 from tg_mad.config import MAX_NEW_TOKENS, TOP_P
+
+
+def _should_retry(exc: Exception) -> bool:
+    """Retry transient backend errors, not deterministic client-side prompt errors."""
+    return not isinstance(exc, LiteLLMBadRequestError)
 
 
 class VLLMEngine(EngineLM):
@@ -54,7 +60,11 @@ class VLLMEngine(EngineLM):
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "EMPTY")
 
     @cached
-    @retry(wait=wait_random_exponential(min=1, max=5), stop=stop_after_attempt(5))
+    @retry(
+        retry=retry_if_exception(_should_retry),
+        wait=wait_random_exponential(min=1, max=5),
+        stop=stop_after_attempt(5),
+    )
     def _generate_from_single_prompt(
         self,
         content: str,
@@ -85,7 +95,11 @@ class VLLMEngine(EngineLM):
         return response["choices"][0]["message"]["content"]
 
     @cached
-    @retry(wait=wait_random_exponential(min=1, max=5), stop=stop_after_attempt(5))
+    @retry(
+        retry=retry_if_exception(_should_retry),
+        wait=wait_random_exponential(min=1, max=5),
+        stop=stop_after_attempt(5),
+    )
     def _generate_from_multiple_input(
         self,
         content: List[Union[str, bytes]],
@@ -127,7 +141,7 @@ def create_evaluator_engine(
     temperature: float = None,
     max_tokens: int = None,
 ) -> VLLMEngine:
-    """Factory for the evaluator/backward engine (Qwen3-8B)."""
+    """Factory for the evaluator/backward engine."""
     from tg_mad.config import EVALUATOR_MODEL, EVALUATOR_BASE_URL, EVALUATOR_TEMPERATURE
 
     return VLLMEngine(

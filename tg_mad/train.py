@@ -101,6 +101,7 @@ def build_run_config(args, artifact_paths):
         "existing_data": args.existing_data,
         "allow_failed_generations": args.allow_failed_generations,
         "evaluator_type": args.evaluator_type,
+        "evaluator_model": args.evaluator_model,
     }
 
 
@@ -138,6 +139,7 @@ def train(args):
     else:
         logger.info("Using local vLLM evaluator engine")
         evaluator_engine = create_evaluator_engine(
+            model=args.evaluator_model,
             base_url=args.evaluator_base_url,
             max_tokens=args.evaluator_max_new_tokens,
         )

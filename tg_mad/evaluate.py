@@ -51,6 +51,12 @@ def parse_args():
     parser.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--max_test_samples",
+        type=int,
+        default=None,
+        help="Optionally evaluate only the first N held-out test samples from the saved split.",
+    )
+    parser.add_argument(
         "--allow_failed_generations",
         action="store_true",
         help="Continue with placeholder text if the debater backend fails.",
@@ -73,6 +79,7 @@ def build_eval_config(args, artifact_paths, prompt_history_path):
         "n_rounds": args.n_rounds,
         "max_new_tokens": args.max_new_tokens,
         "seed": args.seed,
+        "max_test_samples": args.max_test_samples,
         "data_dir": args.data_dir,
         "existing_data": args.existing_data,
         "allow_failed_generations": args.allow_failed_generations,
@@ -366,6 +373,8 @@ def evaluate(args):
         raise ValueError("--n_agents must be at least 1")
     if args.n_rounds < 0:
         raise ValueError("--n_rounds must be non-negative")
+    if args.max_test_samples is not None and args.max_test_samples < 1:
+        raise ValueError("--max_test_samples must be at least 1")
 
     artifact_paths = resolve_artifact_paths(
         output_dir=args.output_dir,
@@ -418,6 +427,15 @@ def evaluate(args):
     else:
         _, test_samples, _ = select_train_test_split(
             existing_data, questions, answers
+        )
+
+    if args.max_test_samples is not None:
+        original_test_count = len(test_samples)
+        test_samples = test_samples[: args.max_test_samples]
+        logger.info(
+            "Limiting evaluation to %s/%s held-out samples",
+            len(test_samples),
+            original_test_count,
         )
 
     logger.info(f"Evaluating on {len(test_samples)} test samples")
@@ -496,6 +514,10 @@ def evaluate(args):
     print(f"  Majority Vote: {eval_results['mv_accuracy']:.2%}")
     print(f"  Standard MAD:  {eval_results['standard_mad_accuracy']:.2%}")
     print(f"  TG-MAD:        {eval_results['tgmad_accuracy']:.2%}")
+    print(
+        f"  Total TG-MAD Accuracy on {len(test_samples)} held-out problems: "
+        f"{eval_results['tgmad_accuracy']:.2%}"
+    )
     print()
     print("Round-by-round (mean agent accuracy):")
     for t in range(args.n_rounds + 1):
