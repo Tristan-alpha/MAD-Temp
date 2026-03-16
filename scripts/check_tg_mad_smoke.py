@@ -4,12 +4,22 @@ These checks do not require live vLLM servers. They verify:
 - generation failures fail fast by default
 - degraded mode remains available behind an explicit flag
 - artifact paths resolve under the selected output directory
+- text-history paths resolve and JSONL writing works
 """
+
+import json
+import os
+import tempfile
 
 import textgrad as tg
 
 from tg_mad.forward_pass import mad_forward_pass
-from tg_mad.utils import resolve_artifact_paths
+from tg_mad.utils import (
+    append_jsonl_record,
+    init_text_history_file,
+    resolve_artifact_paths,
+    resolve_text_history_paths,
+)
 
 
 class FailingEngine:
@@ -54,6 +64,33 @@ def main():
     assert paths["prompt_history"].endswith("out/tg_mad_smoke/prompt_history.json")
     assert paths["split_info"].endswith("out/tg_mad_smoke/split_info.json")
     assert paths["eval_results"].endswith("out/tg_mad_smoke/eval_results.json")
+
+    history_paths = resolve_text_history_paths(
+        output_dir="out/tg_mad_smoke",
+        existing_data_path="out/history/gsm8k/gsm8k_500__qwen3-4b_N=3_R=3.jsonl",
+        stage="train",
+        save_text_history=True,
+    )
+    assert history_paths["text_history_dir"].endswith("out/history/gsm8k/tg_mad_text/tg_mad_smoke")
+    assert history_paths["text_history_file"].endswith(
+        "out/history/gsm8k/tg_mad_text/tg_mad_smoke/train_text_history.jsonl"
+    )
+
+    os.makedirs("out/history", exist_ok=True)
+    with tempfile.TemporaryDirectory(dir="out/history") as tmpdir:
+        history_file = os.path.join(tmpdir, "train_text_history.jsonl")
+        init_text_history_file(
+            history_file,
+            {"record_type": "manifest", "schema_version": 1, "stage": "train"},
+        )
+        append_jsonl_record(
+            history_file,
+            {"record_type": "sample", "schema_version": 1, "sample_index": 0},
+        )
+        with open(history_file, "r") as f:
+            records = [json.loads(line) for line in f if line.strip()]
+        assert [record["record_type"] for record in records] == ["manifest", "sample"]
+        assert records[1]["sample_index"] == 0
 
     print("TG-MAD smoke checks passed.")
 

@@ -25,6 +25,8 @@ EVAL_N_AGENTS="${EVAL_N_AGENTS:-3}"
 EVAL_N_ROUNDS="${EVAL_N_ROUNDS:-3}"
 EVAL_MAX_TEST_SAMPLES="${EVAL_MAX_TEST_SAMPLES:-}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-512}"
+SAVE_TEXT_HISTORY="${SAVE_TEXT_HISTORY:-0}"
+TEXT_HISTORY_DIR="${TEXT_HISTORY_DIR:-}"
 JOB_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-}"
 DEBATER_GPU_SLOTS="${DEBATER_GPU_SLOTS:-0}"
 DEBATER_CUDA_VISIBLE_DEVICES="${DEBATER_CUDA_VISIBLE_DEVICES:-}"
@@ -167,12 +169,12 @@ wait_for_health "debater" "http://${SERVER_HOST}:${DEBATER_PORT}/health" "${DEBA
 
 echo "Running TG-MAD evaluation..."
 eval_args=(
-    --debater_base_url "${DEBATER_URL}" \
-    --prompt_history "${PROMPT_HISTORY_PATH}" \
-    --output_dir "${OUTPUT_DIR}" \
-    --n_agents "${EVAL_N_AGENTS}" \
-    --n_rounds "${EVAL_N_ROUNDS}" \
-    --max_new_tokens "${MAX_NEW_TOKENS}" \
+    --debater_base_url "${DEBATER_URL}"
+    --prompt_history "${PROMPT_HISTORY_PATH}"
+    --output_dir "${OUTPUT_DIR}"
+    --n_agents "${EVAL_N_AGENTS}"
+    --n_rounds "${EVAL_N_ROUNDS}"
+    --max_new_tokens "${MAX_NEW_TOKENS}"
     --seed "${EVAL_SEED}"
 )
 if [[ -n "${SPLIT_INFO_PATH}" ]]; then
@@ -186,6 +188,12 @@ if [[ -n "${RUN_CONFIG_FILE_PATH}" ]]; then
 fi
 if [[ -n "${EVAL_MAX_TEST_SAMPLES}" ]]; then
     eval_args+=(--max_test_samples "${EVAL_MAX_TEST_SAMPLES}")
+fi
+if [[ "${SAVE_TEXT_HISTORY}" == "1" ]]; then
+    eval_args+=(--save_text_history)
+fi
+if [[ -n "${TEXT_HISTORY_DIR}" ]]; then
+    eval_args+=(--text_history_dir "${TEXT_HISTORY_DIR}")
 fi
 
 python -u tg_mad/evaluate.py "${eval_args[@]}"

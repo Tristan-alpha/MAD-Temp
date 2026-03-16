@@ -26,6 +26,8 @@ TRAIN_SEED="${TRAIN_SEED:-42}"
 TRAIN_SIZE="${TRAIN_SIZE:-10}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-512}"
 EVALUATOR_MAX_NEW_TOKENS="${EVALUATOR_MAX_NEW_TOKENS:-512}"
+SAVE_TEXT_HISTORY="${SAVE_TEXT_HISTORY:-0}"
+TEXT_HISTORY_DIR="${TEXT_HISTORY_DIR:-}"
 JOB_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-}"
 DEBATER_GPU_SLOTS="${DEBATER_GPU_SLOTS:-0}"
 EVALUATOR_GPU_SLOTS="${EVALUATOR_GPU_SLOTS:-1}"
@@ -207,19 +209,28 @@ wait_for_health "debater" "http://${SERVER_HOST}:${DEBATER_PORT}/health" "${DEBA
 wait_for_health "evaluator" "http://${SERVER_HOST}:${EVALUATOR_PORT}/health" "${EVALUATOR_LOG}" "${EVALUATOR_PID}"
 
 echo "Running TG-MAD training..."
-python -u tg_mad/train.py \
-    --debater_base_url "${DEBATER_URL}" \
-    --evaluator_base_url "${EVALUATOR_URL}" \
-    --batch_size "${TRAIN_BATCH_SIZE}" \
-    --num_epochs "${TRAIN_NUM_EPOCHS}" \
-    --train_size "${TRAIN_SIZE}" \
-    --n_agents "${TRAIN_N_AGENTS}" \
-    --n_rounds "${TRAIN_N_ROUNDS}" \
-    --max_new_tokens "${MAX_NEW_TOKENS}" \
-    --evaluator_max_new_tokens "${EVALUATOR_MAX_NEW_TOKENS}" \
-    --evaluator_model "${EVALUATOR_ENGINE_MODEL}" \
-    --seed "${TRAIN_SEED}" \
+train_args=(
+    --debater_base_url "${DEBATER_URL}"
+    --evaluator_base_url "${EVALUATOR_URL}"
+    --batch_size "${TRAIN_BATCH_SIZE}"
+    --num_epochs "${TRAIN_NUM_EPOCHS}"
+    --train_size "${TRAIN_SIZE}"
+    --n_agents "${TRAIN_N_AGENTS}"
+    --n_rounds "${TRAIN_N_ROUNDS}"
+    --max_new_tokens "${MAX_NEW_TOKENS}"
+    --evaluator_max_new_tokens "${EVALUATOR_MAX_NEW_TOKENS}"
+    --evaluator_model "${EVALUATOR_ENGINE_MODEL}"
+    --seed "${TRAIN_SEED}"
     --output_dir "${OUTPUT_DIR}"
+)
+if [[ "${SAVE_TEXT_HISTORY}" == "1" ]]; then
+    train_args+=(--save_text_history)
+fi
+if [[ -n "${TEXT_HISTORY_DIR}" ]]; then
+    train_args+=(--text_history_dir "${TEXT_HISTORY_DIR}")
+fi
+
+python -u tg_mad/train.py "${train_args[@]}"
 
 echo "Training complete."
 date

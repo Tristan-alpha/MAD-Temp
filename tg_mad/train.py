@@ -30,9 +30,15 @@ from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_
 from tg_mad.forward_pass import mad_forward_pass
 from tg_mad.evaluator import create_evaluator_loss
 from tg_mad.utils import (
+    append_jsonl_record,
     answer_is_correct,
+    build_text_history_manifest,
+    init_text_history_file,
+    render_transcript_text,
     resolve_artifact_paths,
+    resolve_text_history_paths,
     save_json,
+    serialize_rounds_for_history,
     set_seeds,
     setup_logging,
 )
@@ -57,6 +63,17 @@ def parse_args():
     parser.add_argument("--data_dir", type=str, default="./datasets")
     parser.add_argument("--existing_data", type=str, default=EXISTING_DATA_PATH)
     parser.add_argument(
+        "--save_text_history",
+        action="store_true",
+        help="Save per-sample debate text to JSONL files under out/history.",
+    )
+    parser.add_argument(
+        "--text_history_dir",
+        type=str,
+        default=None,
+        help="Optional directory for train/eval text history JSONL files.",
+    )
+    parser.add_argument(
         "--allow_failed_generations",
         action="store_true",
         help="Continue with placeholder text if the debater backend fails.",
@@ -78,13 +95,16 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_run_config(args, artifact_paths):
+def build_run_config(args, artifact_paths, text_history_paths):
     return {
         "schema_version": ARTIFACT_SCHEMA_VERSION,
         "output_dir": artifact_paths["output_dir"],
         "prompt_history_file": artifact_paths["prompt_history"],
         "split_info_file": artifact_paths["split_info"],
         "run_config_file": artifact_paths["run_config"],
+        "save_text_history": args.save_text_history,
+        "text_history_dir": text_history_paths["text_history_dir"],
+        "text_history_file": text_history_paths["text_history_file"],
         "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
         "evaluator_base_url": args.evaluator_base_url or EVALUATOR_BASE_URL,
         "debater_temperature": TEMPERATURE,
@@ -105,6 +125,38 @@ def build_run_config(args, artifact_paths):
     }
 
 
+def build_train_text_history_record(
+    *,
+    sample,
+    result,
+    prompt_before_step: str,
+    epoch: int,
+    batch_idx: int,
+    sample_position: int,
+    evaluator_feedback: str,
+):
+    rounds_payload = serialize_rounds_for_history(result["rounds"])
+    return {
+        "record_type": "sample",
+        "stage": "train",
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "sample_index": sample["index"],
+        "sample_position_in_batch": sample_position,
+        "epoch": epoch,
+        "batch": batch_idx,
+        "question": sample["question"],
+        "ground_truth": sample["ground_truth"],
+        "prompt_before_step": prompt_before_step,
+        "rounds": rounds_payload,
+        "t0_majority_vote": result["t0_majority_vote"],
+        "final_majority_vote": result["final_majority_vote"],
+        "final_correct": result["final_correct"],
+        "transcript_text": render_transcript_text(sample["question"], result["rounds"]),
+        "evaluator_feedback": evaluator_feedback,
+    }
+
+
 def train(args):
     if args.n_agents < 1:
         raise ValueError("--n_agents must be at least 1")
@@ -117,10 +169,36 @@ def train(args):
         split_info_file=args.split_info_file,
         run_config_file=args.run_config_file,
     )
+    text_history_paths = resolve_text_history_paths(
+        output_dir=args.output_dir,
+        existing_data_path=args.existing_data,
+        stage="train",
+        save_text_history=args.save_text_history,
+        text_history_dir=args.text_history_dir,
+    )
     logger = setup_logging(artifact_paths["output_dir"], name="tg_mad_train")
     set_seeds(args.seed)
-    run_config = build_run_config(args, artifact_paths)
+    run_config = build_run_config(args, artifact_paths, text_history_paths)
+    if args.save_text_history:
+        init_text_history_file(
+            text_history_paths["text_history_file"],
+            build_text_history_manifest(
+                schema_version=ARTIFACT_SCHEMA_VERSION,
+                stage="train",
+                text_history_paths=text_history_paths,
+                output_dir=artifact_paths["output_dir"],
+                prompt_history_file=artifact_paths["prompt_history"],
+                run_config_file=artifact_paths["run_config"],
+                split_info_file=artifact_paths["split_info"],
+                run_config=run_config,
+            ),
+        )
     save_json(run_config, artifact_paths["run_config"])
+    if args.save_text_history:
+        logger.info(
+            "Saving train text history to %s",
+            text_history_paths["text_history_file"],
+        )
 
     # === Create engines ===
     logger.info("Creating engines...")
@@ -209,12 +287,13 @@ def train(args):
             batch_idx = batch_start // args.batch_size
             losses = []
             batch_correct = 0
+            prompt_before_step = debater_prompt.value
 
             logger.info(
                 f"=== Epoch {epoch}, Batch {batch_idx} "
                 f"({len(batch)} samples) ==="
             )
-            logger.info(f"Current prompt (first 200 chars): {debater_prompt.value[:200]}...")
+            logger.info(f"Current prompt (first 200 chars): {prompt_before_step[:200]}...")
 
             for si, sample in enumerate(batch):
                 logger.info(
@@ -257,6 +336,19 @@ def train(args):
                 )
                 loss = loss_fn(result["transcript_var"])
                 losses.append(loss)
+                if args.save_text_history:
+                    append_jsonl_record(
+                        text_history_paths["text_history_file"],
+                        build_train_text_history_record(
+                            sample=sample,
+                            result=result,
+                            prompt_before_step=prompt_before_step,
+                            epoch=epoch,
+                            batch_idx=batch_idx,
+                            sample_position=si,
+                            evaluator_feedback=loss.value,
+                        ),
+                    )
 
             # Aggregate and step
             batch_accuracy = batch_correct / len(batch)

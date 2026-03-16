@@ -4,6 +4,7 @@ import argparse
 import os
 import json
 import logging
+import time
 
 import numpy as np
 import matplotlib
@@ -27,9 +28,15 @@ from tg_mad.engine import create_debater_engine
 from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
 from tg_mad.forward_pass import mad_forward_pass
 from tg_mad.utils import (
+    append_jsonl_record,
     majority_vote,
+    build_text_history_manifest,
+    init_text_history_file,
+    render_transcript_text,
     resolve_artifact_paths,
+    resolve_text_history_paths,
     save_json,
+    serialize_rounds_for_history,
     set_seeds,
     setup_logging,
     answer_is_correct,
@@ -46,6 +53,17 @@ def parse_args():
     parser.add_argument("--run_config_file", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="./datasets")
     parser.add_argument("--existing_data", type=str, default=EXISTING_DATA_PATH)
+    parser.add_argument(
+        "--save_text_history",
+        action="store_true",
+        help="Save per-sample debate text to JSONL files under out/history.",
+    )
+    parser.add_argument(
+        "--text_history_dir",
+        type=str,
+        default=None,
+        help="Optional directory for train/eval text history JSONL files.",
+    )
     parser.add_argument("--n_agents", type=int, default=N_AGENTS)
     parser.add_argument("--n_rounds", type=int, default=N_ROUNDS)
     parser.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
@@ -64,7 +82,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_eval_config(args, artifact_paths, prompt_history_path):
+def build_eval_config(args, artifact_paths, prompt_history_path, text_history_paths):
     return {
         "schema_version": ARTIFACT_SCHEMA_VERSION,
         "output_dir": artifact_paths["output_dir"],
@@ -72,6 +90,9 @@ def build_eval_config(args, artifact_paths, prompt_history_path):
         "results_file": artifact_paths["eval_results"],
         "split_info_file": artifact_paths["split_info"],
         "run_config_file": artifact_paths["run_config"],
+        "save_text_history": args.save_text_history,
+        "text_history_dir": text_history_paths["text_history_dir"],
+        "text_history_file": text_history_paths["text_history_file"],
         "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
         "debater_temperature": TEMPERATURE,
         "evaluator_temperature": EVALUATOR_TEMPERATURE,
@@ -83,6 +104,54 @@ def build_eval_config(args, artifact_paths, prompt_history_path):
         "data_dir": args.data_dir,
         "existing_data": args.existing_data,
         "allow_failed_generations": args.allow_failed_generations,
+    }
+
+
+def build_eval_text_history_record(
+    *,
+    sample,
+    result,
+    n_rounds: int,
+    prompt_reference,
+):
+    existing = sample["existing_data"]
+    gt = sample["ground_truth"]
+    t0_answers = existing["0"].get("final_answers", [])
+    t0_parsed = []
+    for answer in t0_answers:
+        if answer == "" or answer is None:
+            t0_parsed.append(None)
+        else:
+            t0_parsed.append(float(answer))
+    t0_majority_vote = majority_vote(t0_parsed)
+    final_round_key = str(n_rounds)
+    standard_mad_final = existing.get(final_round_key, {})
+
+    return {
+        "record_type": "sample",
+        "stage": "eval",
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "sample_index": sample["index"],
+        "question": sample["question"],
+        "ground_truth": gt,
+        "optimized_prompt_reference": {
+            "prompt_history_file": prompt_reference["prompt_history_file"],
+            "optimized_prompt_index": prompt_reference["optimized_prompt_index"],
+        },
+        "rounds": serialize_rounds_for_history(result["rounds"]),
+        "final_majority_vote": result["final_majority_vote"],
+        "final_correct": result["final_correct"],
+        "transcript_text": render_transcript_text(sample["question"], result["rounds"]),
+        "baseline_comparison": {
+            "t0_answers": t0_answers,
+            "t0_parsed": t0_parsed,
+            "t0_majority_vote": t0_majority_vote,
+            "t0_majority_correct": answer_is_correct(t0_majority_vote, gt),
+            "standard_mad_round": n_rounds,
+            "standard_mad_final_answer": standard_mad_final.get("debate_answer"),
+            "standard_mad_final_correct": standard_mad_final.get("debate_answer_iscorr", False),
+        },
     }
 
 
@@ -183,6 +252,8 @@ def evaluate_tgmad(
     n_rounds=N_ROUNDS,
     logger=None,
     allow_failed_generations: bool = False,
+    text_history_file: str = None,
+    prompt_reference=None,
 ):
     """Run debates on test set with optimized prompt and compute metrics."""
     if logger is None:
@@ -252,6 +323,17 @@ def evaluate_tgmad(
                 round_agent_total[t] += 1
                 if is_c:
                     round_agent_correct[t] += 1
+
+        if text_history_file is not None:
+            append_jsonl_record(
+                text_history_file,
+                build_eval_text_history_record(
+                    sample=sample,
+                    result=result,
+                    n_rounds=n_rounds,
+                    prompt_reference=prompt_reference,
+                ),
+            )
 
         if (si + 1) % 50 == 0:
             logger.info(
@@ -387,12 +469,39 @@ def evaluate(args):
             else os.path.join(args.output_dir, "evaluation_run_config.json")
         ),
     )
+    text_history_paths = resolve_text_history_paths(
+        output_dir=args.output_dir,
+        existing_data_path=args.existing_data,
+        stage="eval",
+        save_text_history=args.save_text_history,
+        text_history_dir=args.text_history_dir,
+    )
     prompt_history_path = artifact_paths["prompt_history"]
-    eval_config = build_eval_config(args, artifact_paths, prompt_history_path)
+    eval_config = build_eval_config(args, artifact_paths, prompt_history_path, text_history_paths)
+    if args.save_text_history:
+        init_text_history_file(
+            text_history_paths["text_history_file"],
+            build_text_history_manifest(
+                schema_version=ARTIFACT_SCHEMA_VERSION,
+                stage="eval",
+                text_history_paths=text_history_paths,
+                output_dir=artifact_paths["output_dir"],
+                prompt_history_file=prompt_history_path,
+                run_config_file=artifact_paths["run_config"],
+                split_info_file=artifact_paths["split_info"],
+                results_file=artifact_paths["eval_results"],
+                run_config=eval_config,
+            ),
+        )
     save_json(eval_config, artifact_paths["run_config"])
 
     logger = setup_logging(artifact_paths["output_dir"], name="tg_mad_eval")
     set_seeds(args.seed)
+    if args.save_text_history:
+        logger.info(
+            "Saving eval text history to %s",
+            text_history_paths["text_history_file"],
+        )
 
     # Load optimized prompt
     logger.info(f"Loading prompt history from {prompt_history_path}")
@@ -400,6 +509,10 @@ def evaluate(args):
         prompt_history = json.load(f)
     optimized_prompt = prompt_history[-1]["prompt"]
     initial_prompt = prompt_history[0]["prompt"]
+    prompt_reference = {
+        "prompt_history_file": prompt_history_path,
+        "optimized_prompt_index": len(prompt_history) - 1,
+    }
     logger.info(f"Optimized prompt (first 200 chars): {optimized_prompt[:200]}...")
 
     # Load data
@@ -461,6 +574,8 @@ def evaluate(args):
         n_rounds=args.n_rounds,
         logger=logger,
         allow_failed_generations=args.allow_failed_generations,
+        text_history_file=text_history_paths["text_history_file"],
+        prompt_reference=prompt_reference,
     )
     logger.info(f"  TG-MAD accuracy: {tgmad_results['tgmad_accuracy']:.2%}")
 
