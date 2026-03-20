@@ -255,16 +255,30 @@ def evaluate_tgmad(
     text_history_file: str = None,
     prompt_reference=None,
 ):
-    """Run debates on test set with optimized prompt and compute metrics."""
+    """Run debates on test set with optimized prompt and compute metrics.
+
+    ``optimized_prompt`` can be a single string (shared mode) or a list of
+    strings (per-agent mode).
+    """
     if logger is None:
         logger = logging.getLogger("tg_mad_eval")
 
-    # Non-gradient Variable for evaluation
-    prompt_var = tg.Variable(
-        value=optimized_prompt,
-        requires_grad=False,
-        role_description="optimized system prompt for debater agents (evaluation)",
-    )
+    # Non-gradient Variable(s) for evaluation
+    if isinstance(optimized_prompt, list):
+        prompt_var = [
+            tg.Variable(
+                value=p,
+                requires_grad=False,
+                role_description=f"optimized system prompt for agent {i+1} (evaluation)",
+            )
+            for i, p in enumerate(optimized_prompt)
+        ]
+    else:
+        prompt_var = tg.Variable(
+            value=optimized_prompt,
+            requires_grad=False,
+            role_description="optimized system prompt for debater agents (evaluation)",
+        )
 
     total = len(test_samples)
     tgmad_correct = 0
@@ -503,17 +517,27 @@ def evaluate(args):
             text_history_paths["text_history_file"],
         )
 
-    # Load optimized prompt
+    # Load optimized prompt(s) — supports both shared and per-agent formats
     logger.info(f"Loading prompt history from {prompt_history_path}")
     with open(prompt_history_path, "r") as f:
         prompt_history = json.load(f)
-    optimized_prompt = prompt_history[-1]["prompt"]
-    initial_prompt = prompt_history[0]["prompt"]
+    last_entry = prompt_history[-1]
+    first_entry = prompt_history[0]
+    per_agent_mode = "prompts" in last_entry
+    if per_agent_mode:
+        optimized_prompt = last_entry["prompts"]   # list[str]
+        initial_prompt = first_entry["prompts"]
+        logger.info("Per-agent prompt mode detected (%d prompts)", len(optimized_prompt))
+        for i, p in enumerate(optimized_prompt):
+            logger.info(f"  Agent {i+1} prompt (first 120 chars): {p[:120]}...")
+    else:
+        optimized_prompt = last_entry["prompt"]    # str
+        initial_prompt = first_entry["prompt"]
+        logger.info(f"Optimized prompt (first 200 chars): {optimized_prompt[:200]}...")
     prompt_reference = {
         "prompt_history_file": prompt_history_path,
         "optimized_prompt_index": len(prompt_history) - 1,
     }
-    logger.info(f"Optimized prompt (first 200 chars): {optimized_prompt[:200]}...")
 
     # Load data
     logger.info("Loading data...")

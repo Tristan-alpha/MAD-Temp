@@ -1,12 +1,15 @@
 """MAD forward pass using TextGrad computation graph.
 
-Each agent call goes through tg.BlackboxLLM so that the shared
-debater_prompt Variable is registered as a predecessor, enabling
-gradient flow via loss.backward().
+Each agent call goes through tg.BlackboxLLM so that the debater_prompt
+Variable is registered as a predecessor, enabling gradient flow via
+loss.backward().
+
+Supports both shared-prompt mode (single Variable) and per-agent mode
+(list of Variables) controlled by the type of debater_prompt passed in.
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import textgrad as tg
 
@@ -70,7 +73,7 @@ def format_debate_context(
 def mad_forward_pass(
     question: str,
     ground_truth,
-    debater_prompt: tg.Variable,
+    debater_prompt: Union[tg.Variable, List[tg.Variable]],
     debater_engine,
     n_agents: int = N_AGENTS,
     n_rounds: int = N_ROUNDS,
@@ -79,23 +82,36 @@ def mad_forward_pass(
 ) -> dict:
     """Run a full multi-agent debate using TextGrad's BlackboxLLM.
 
-    The debater_prompt Variable (requires_grad=True) is shared as the
-    system_prompt for all agent calls. BlackboxLLM → LLMCall.forward()
-    registers it as a predecessor of each response Variable, enabling
-    gradient flow during backward().
+    Args:
+        debater_prompt: Either a single tg.Variable (shared mode) or a list
+            of tg.Variables (per-agent mode, one per agent).
 
     Returns dict with:
         question, ground_truth,
         t0_answers (raw), t0_parsed, t0_majority_vote,
         rounds (per-round data),
-        final_majority_vote,
-        all_response_vars (list of tg.Variable for transcript),
-        transcript_var (tg.sum of all responses)
+        final_majority_vote, final_correct,
+        all_response_vars (flat list of tg.Variable),
+        per_agent_response_vars (list[list[tg.Variable]], per-agent mode only),
+        transcript_var (tg.sum of all responses, shared mode only; None in per-agent mode)
     """
-    # All agents share the same BlackboxLLM instance → same debater_prompt
-    debater_model = tg.BlackboxLLM(debater_engine, system_prompt=debater_prompt)
+    per_agent_mode = isinstance(debater_prompt, list)
+
+    if per_agent_mode:
+        assert len(debater_prompt) == n_agents, (
+            f"Expected {n_agents} per-agent prompts, got {len(debater_prompt)}"
+        )
+        debater_models = [
+            tg.BlackboxLLM(debater_engine, system_prompt=p)
+            for p in debater_prompt
+        ]
+    else:
+        shared_model = tg.BlackboxLLM(debater_engine, system_prompt=debater_prompt)
+        debater_models = [shared_model] * n_agents
 
     all_response_vars = []
+    # per_agent_response_vars[i] collects all response vars for agent i
+    per_agent_response_vars: List[List[tg.Variable]] = [[] for _ in range(n_agents)]
     rounds_data = {}
 
     # === Round t=0: Independent answers ===
@@ -109,7 +125,7 @@ def mad_forward_pass(
             role_description=f"math problem for agent {i+1} at round 0",
         )
         try:
-            resp_var = debater_model(q_var)
+            resp_var = debater_models[i](q_var)
             t0_responses.append(resp_var.value)
             t0_vars.append(resp_var)
             t0_parsed.append(parse_answer(resp_var.value))
@@ -126,6 +142,8 @@ def mad_forward_pass(
             t0_parsed.append(None)
 
     all_response_vars.extend(t0_vars)
+    for i, v in enumerate(t0_vars):
+        per_agent_response_vars[i].append(v)
     t0_majority = majority_vote(t0_parsed)
 
     rounds_data[0] = {
@@ -153,7 +171,7 @@ def mad_forward_pass(
                 role_description=f"debate context for agent {i+1} at round {t}",
             )
             try:
-                resp_var = debater_model(context_var)
+                resp_var = debater_models[i](context_var)
                 round_responses.append(resp_var.value)
                 round_vars.append(resp_var)
                 round_parsed.append(parse_answer(resp_var.value))
@@ -170,6 +188,8 @@ def mad_forward_pass(
                 round_parsed.append(None)
 
         all_response_vars.extend(round_vars)
+        for i, v in enumerate(round_vars):
+            per_agent_response_vars[i].append(v)
         round_majority = majority_vote(round_parsed)
 
         rounds_data[t] = {
@@ -183,12 +203,11 @@ def mad_forward_pass(
 
         prev_responses = round_responses
 
-    # === Build transcript Variable for TextLoss ===
-    # tg.sum concatenates all response Variables and tracks predecessors
-    # Each response_var has debater_prompt as predecessor via BlackboxLLM
-    transcript_var = tg.sum(all_response_vars)
-
     final_majority = majority_vote(rounds_data[n_rounds]["parsed"])
+
+    # In shared mode, build tg.sum transcript for TextLoss backward.
+    # In per-agent mode, skip tg.sum — caller handles gradient injection.
+    transcript_var = None if per_agent_mode else tg.sum(all_response_vars)
 
     return {
         "question": question,
@@ -200,5 +219,6 @@ def mad_forward_pass(
         "final_majority_vote": final_majority,
         "final_correct": answer_is_correct(final_majority, ground_truth),
         "all_response_vars": all_response_vars,
+        "per_agent_response_vars": per_agent_response_vars,
         "transcript_var": transcript_var,
     }

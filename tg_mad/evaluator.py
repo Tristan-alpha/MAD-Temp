@@ -3,11 +3,20 @@
 Creates per-sample TextLoss functions that embed ground truth and t=0 context
 in the evaluator system prompt. The evaluator LLM generates textual gradients
 targeting the debater_prompt Variable.
+
+Also provides a per-agent evaluator that returns structured, routed feedback
+for independent per-agent prompt optimization.
 """
 
-from typing import List, Optional
+import logging
+import re
+from typing import Callable, List, Optional
 
 import textgrad as tg
+
+from tg_mad.config import N_AGENTS
+
+logger = logging.getLogger("tg_mad")
 
 
 def create_evaluator_loss(
@@ -60,3 +69,94 @@ YOUR ANALYSIS MUST CHECK FOR:
 Be specific. Reference exact moments in the transcript. Your feedback will be used to update the system prompt via gradient descent."""
 
     return tg.TextLoss(evaluator_prompt, engine=evaluator_engine)
+
+
+def _parse_per_agent_feedback(raw: str, n_agents: int) -> List[str]:
+    """Parse evaluator output into per-agent feedback sections.
+
+    Expects sections delimited by ``[AGENT_N_FEEDBACK]`` markers.
+    Falls back to duplicating the full text if parsing fails.
+    """
+    pattern = r"\[AGENT_(\d+)_FEEDBACK\]"
+    splits = re.split(pattern, raw)
+
+    # splits should be: [preamble, "1", text1, "2", text2, "3", text3, ...]
+    feedbacks: dict[int, str] = {}
+    for i in range(1, len(splits) - 1, 2):
+        try:
+            idx = int(splits[i])
+            feedbacks[idx] = splits[i + 1].strip()
+        except (ValueError, IndexError):
+            continue
+
+    if all((i + 1) in feedbacks for i in range(n_agents)):
+        return [feedbacks[i + 1] for i in range(n_agents)]
+
+    # Fallback: duplicate full feedback to all agents
+    logger.warning(
+        "Could not parse %d agent sections (found %d). "
+        "Duplicating full feedback to all agents.",
+        n_agents,
+        len(feedbacks),
+    )
+    return [raw.strip()] * n_agents
+
+
+def create_per_agent_evaluator(
+    ground_truth,
+    t0_parsed: List[Optional[float]],
+    t0_majority: Optional[float],
+    evaluator_engine,
+    n_agents: int = N_AGENTS,
+) -> Callable[[str], List[str]]:
+    """Create a callable that routes evaluator feedback to individual agents.
+
+    Unlike ``create_evaluator_loss`` (which returns a ``tg.TextLoss`` for
+    automatic backward), this returns a plain function that:
+    1. Takes a debate transcript string.
+    2. Calls the evaluator LLM once with a prompt requesting per-agent feedback.
+    3. Returns ``list[str]`` — one feedback string per agent.
+
+    The caller is responsible for injecting these as gradients.
+    """
+    t0_strs = [str(a) if a is not None else "FAILED" for a in t0_parsed]
+    agent_lines = "\n".join(
+        f"Agent {idx + 1}: {answer}" for idx, answer in enumerate(t0_strs)
+    )
+
+    system_prompt = f"""You are evaluating a multi-agent math debate. Each agent has its OWN independent system prompt that will be optimized separately. Your job is to provide SEPARATE feedback for each agent's system prompt.
+
+GROUND TRUTH ANSWER: {ground_truth}
+
+INDEPENDENT ANSWERS AT t=0 (before debate):
+{agent_lines}
+Majority Vote at t=0: {t0_majority}
+
+Analyze the debate transcript below. For EACH agent, evaluate:
+
+1. ECHO CHAMBER: Did this agent change a correct answer to an incorrect one under peer pressure? If so, harshly critique — their prompt must forbid conceding without mathematical proof.
+
+2. STAGNATION: Did this agent just repeat their position without engaging? Critique their prompt for failing to encourage productive reasoning.
+
+3. COMPLEMENTARITY: Did this agent's approach complement or duplicate the others? Suggest how their prompt should differentiate their role.
+
+4. POSITIVE PATTERNS: Did this agent successfully defend a correct answer or convince others through rigorous reasoning? Reinforce these behaviors.
+
+You MUST structure your output with these exact markers:
+
+[AGENT_1_FEEDBACK]
+<feedback for Agent 1's system prompt>
+
+[AGENT_2_FEEDBACK]
+<feedback for Agent 2's system prompt>
+
+[AGENT_3_FEEDBACK]
+<feedback for Agent 3's system prompt>
+
+Be specific. Reference exact moments in the transcript."""
+
+    def evaluate_transcript(transcript_text: str) -> List[str]:
+        raw = evaluator_engine.generate(transcript_text, system_prompt=system_prompt)
+        return _parse_per_agent_feedback(raw, n_agents)
+
+    return evaluate_transcript

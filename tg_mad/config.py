@@ -53,6 +53,23 @@ OPTIMIZER_CONSTRAINTS = [
     "The prompt must not exceed 500 words.",
 ]
 
+# === Per-Agent Prompt Optimization ===
+PER_AGENT_PROMPTS = False  # default off for backward compat
+
+# Three different seed prompts for symmetry breaking — each nudges a different
+# debate behaviour so TextGrad can differentiate the agents from step 0.
+INITIAL_DEBATER_PROMPTS = [
+    'Solve the math problem step by step with clear reasoning. End with {final answer: <number>}.',
+    'Check for errors and verify each calculation carefully. End with {final answer: <number>}.',
+    'Consider alternative approaches and compare methods. End with {final answer: <number>}.',
+]
+
+OPTIMIZER_CONSTRAINTS_PER_AGENT = [
+    "The prompt must always instruct the agent to end responses with: '{final answer: <number>}'.",
+    "The prompt must be a system prompt for a math debate agent.",
+    "The prompt MUST NOT exceed 80 words. Be concise.",
+]
+
 # === API Evaluator (kimi-k2.5 via OpenAI-compatible endpoint) ===
 # Used with --evaluator_type api to avoid GPU memory pressure from local Qwen3-8B.
 # API key: set KIMI_API_KEY env var or pass --evaluator_api_key.

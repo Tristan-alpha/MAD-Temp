@@ -14,12 +14,14 @@ from tg_mad.config import (
     EVALUATOR_BASE_URL,
     EVALUATOR_TEMPERATURE,
     EXISTING_DATA_PATH,
-    NUM_EPOCHS,
     INITIAL_DEBATER_PROMPT,
+    INITIAL_DEBATER_PROMPTS,
     MAX_NEW_TOKENS,
     N_AGENTS,
     N_ROUNDS,
+    NUM_EPOCHS,
     OPTIMIZER_CONSTRAINTS,
+    OPTIMIZER_CONSTRAINTS_PER_AGENT,
     OUTPUT_DIR,
     SEED,
     TEMPERATURE,
@@ -28,7 +30,7 @@ from tg_mad.config import (
 from tg_mad.engine import create_debater_engine, create_evaluator_engine, create_api_evaluator_engine
 from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
 from tg_mad.forward_pass import mad_forward_pass
-from tg_mad.evaluator import create_evaluator_loss
+from tg_mad.evaluator import create_evaluator_loss, create_per_agent_evaluator
 from tg_mad.utils import (
     append_jsonl_record,
     answer_is_correct,
@@ -92,6 +94,13 @@ def parse_args():
                         help="Override evaluator model string (e.g. 'openai/kimi-k2.5').")
     parser.add_argument("--evaluator_api_base_url", type=str, default=None,
                         help="Override evaluator API base URL.")
+    # Per-agent prompt optimization
+    parser.add_argument(
+        "--per_agent_prompts",
+        action="store_true",
+        default=False,
+        help="Optimize a separate prompt per agent instead of one shared prompt.",
+    )
     return parser.parse_args()
 
 
@@ -122,6 +131,7 @@ def build_run_config(args, artifact_paths, text_history_paths):
         "allow_failed_generations": args.allow_failed_generations,
         "evaluator_type": args.evaluator_type,
         "evaluator_model": args.evaluator_model,
+        "per_agent_prompts": args.per_agent_prompts,
     }
 
 
@@ -129,12 +139,17 @@ def build_train_text_history_record(
     *,
     sample,
     result,
-    prompt_before_step: str,
+    prompt_before_step,
     epoch: int,
     batch_idx: int,
     sample_position: int,
-    evaluator_feedback: str,
+    evaluator_feedback,
 ):
+    """Build a per-sample text history record.
+
+    ``prompt_before_step`` can be a single string (shared mode) or a list of
+    strings (per-agent mode).  ``evaluator_feedback`` can be a string or a list.
+    """
     rounds_payload = serialize_rounds_for_history(result["rounds"])
     return {
         "record_type": "sample",
@@ -248,36 +263,63 @@ def train(args):
         artifact_paths["split_info"],
     )
 
-    # === Create optimizable variable ===
-    debater_prompt = tg.Variable(
-        value=INITIAL_DEBATER_PROMPT,
-        requires_grad=True,
-        role_description=(
-            "shared system prompt for all 3 debater agents in a "
-            "multi-agent debate on math problems"
-        ),
-    )
-
-    # === Create optimizer ===
-    optimizer = tg.TGD(
-        parameters=[debater_prompt],
-        engine=evaluator_engine,
-        constraints=OPTIMIZER_CONSTRAINTS,
-    )
+    # === Create optimizable variable(s) and optimizer(s) ===
+    if args.per_agent_prompts:
+        logger.info("Per-agent prompt mode: creating %d independent prompts", args.n_agents)
+        debater_prompts = [
+            tg.Variable(
+                value=INITIAL_DEBATER_PROMPTS[i % len(INITIAL_DEBATER_PROMPTS)],
+                requires_grad=True,
+                role_description=f"system prompt for debate agent {i + 1}",
+            )
+            for i in range(args.n_agents)
+        ]
+        optimizers = [
+            tg.TGD(
+                parameters=[p],
+                engine=evaluator_engine,
+                constraints=OPTIMIZER_CONSTRAINTS_PER_AGENT,
+            )
+            for p in debater_prompts
+        ]
+        prompt_history = [
+            {
+                "schema_version": ARTIFACT_SCHEMA_VERSION,
+                "run_config": run_config,
+                "epoch": -1,
+                "batch": -1,
+                "prompts": [p.value for p in debater_prompts],
+                "train_batch_accuracy": None,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        ]
+    else:
+        debater_prompt = tg.Variable(
+            value=INITIAL_DEBATER_PROMPT,
+            requires_grad=True,
+            role_description=(
+                "shared system prompt for all 3 debater agents in a "
+                "multi-agent debate on math problems"
+            ),
+        )
+        optimizer = tg.TGD(
+            parameters=[debater_prompt],
+            engine=evaluator_engine,
+            constraints=OPTIMIZER_CONSTRAINTS,
+        )
+        prompt_history = [
+            {
+                "schema_version": ARTIFACT_SCHEMA_VERSION,
+                "run_config": run_config,
+                "epoch": -1,
+                "batch": -1,
+                "prompt": debater_prompt.value,
+                "train_batch_accuracy": None,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        ]
 
     # === Training loop ===
-    prompt_history = [
-        {
-            "schema_version": ARTIFACT_SCHEMA_VERSION,
-            "run_config": run_config,
-            "epoch": -1,
-            "batch": -1,
-            "prompt": debater_prompt.value,
-            "train_batch_accuracy": None,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-    ]
-
     total_steps = 0
     for epoch in range(args.num_epochs):
         random.shuffle(train_samples)
@@ -285,107 +327,224 @@ def train(args):
         for batch_start in range(0, len(train_samples), args.batch_size):
             batch = train_samples[batch_start : batch_start + args.batch_size]
             batch_idx = batch_start // args.batch_size
-            losses = []
             batch_correct = 0
-            prompt_before_step = debater_prompt.value
+
+            if args.per_agent_prompts:
+                prompts_before_step = [p.value for p in debater_prompts]
+            else:
+                prompt_before_step = debater_prompt.value
 
             logger.info(
                 f"=== Epoch {epoch}, Batch {batch_idx} "
                 f"({len(batch)} samples) ==="
             )
-            logger.info(f"Current prompt (first 200 chars): {prompt_before_step[:200]}...")
+            if args.per_agent_prompts:
+                for i, p in enumerate(debater_prompts):
+                    logger.info(f"  Agent {i+1} prompt (first 120 chars): {p.value[:120]}...")
+            else:
+                logger.info(f"Current prompt (first 200 chars): {prompt_before_step[:200]}...")
 
-            for si, sample in enumerate(batch):
-                logger.info(
-                    f"  Sample {si+1}/{len(batch)}: "
-                    f"Q='{sample['question'][:60]}...' GT={sample['ground_truth']}"
-                )
-
-                # Forward pass — runs full T-round debate
-                result = mad_forward_pass(
-                    question=sample["question"],
-                    ground_truth=sample["ground_truth"],
-                    debater_prompt=debater_prompt,
-                    debater_engine=debater_engine,
-                    n_agents=args.n_agents,
-                    n_rounds=args.n_rounds,
-                    allow_failed_generations=args.allow_failed_generations,
-                )
-
-                # Log results
-                t0_mv = result["t0_majority_vote"]
-                final_mv = result["final_majority_vote"]
-                gt = sample["ground_truth"]
-                logger.info(
-                    f"    t0_parsed={result['t0_parsed']}, "
-                    f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt) else 'wrong'})"
-                )
-                logger.info(
-                    f"    final_MV={final_mv} ({'correct' if result['final_correct'] else 'wrong'})"
-                )
-
-                if result["final_correct"]:
-                    batch_correct += 1
-
-                # Create per-sample loss
-                loss_fn = create_evaluator_loss(
-                    ground_truth=sample["ground_truth"],
-                    t0_parsed=result["t0_parsed"],
-                    t0_majority=result["t0_majority_vote"],
-                    evaluator_engine=evaluator_engine,
-                )
-                loss = loss_fn(result["transcript_var"])
-                losses.append(loss)
-                if args.save_text_history:
-                    append_jsonl_record(
-                        text_history_paths["text_history_file"],
-                        build_train_text_history_record(
-                            sample=sample,
-                            result=result,
-                            prompt_before_step=prompt_before_step,
-                            epoch=epoch,
-                            batch_idx=batch_idx,
-                            sample_position=si,
-                            evaluator_feedback=loss.value,
-                        ),
+            if args.per_agent_prompts:
+                # --- Per-agent prompt training path ---
+                for si, sample in enumerate(batch):
+                    logger.info(
+                        f"  Sample {si+1}/{len(batch)}: "
+                        f"Q='{sample['question'][:60]}...' GT={sample['ground_truth']}"
                     )
 
-            # Aggregate and step
-            batch_accuracy = batch_correct / len(batch)
-            logger.info(
-                f"  Batch accuracy: {batch_correct}/{len(batch)} = {batch_accuracy:.2%}"
-            )
+                    result = mad_forward_pass(
+                        question=sample["question"],
+                        ground_truth=sample["ground_truth"],
+                        debater_prompt=debater_prompts,
+                        debater_engine=debater_engine,
+                        n_agents=args.n_agents,
+                        n_rounds=args.n_rounds,
+                        allow_failed_generations=args.allow_failed_generations,
+                    )
 
-            logger.info("  Aggregating losses and computing backward pass...")
-            total_loss = tg.sum(losses)
-            total_loss.backward()
+                    t0_mv = result["t0_majority_vote"]
+                    final_mv = result["final_majority_vote"]
+                    gt = sample["ground_truth"]
+                    logger.info(
+                        f"    t0_parsed={result['t0_parsed']}, "
+                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt) else 'wrong'})"
+                    )
+                    logger.info(
+                        f"    final_MV={final_mv} ({'correct' if result['final_correct'] else 'wrong'})"
+                    )
+                    if result["final_correct"]:
+                        batch_correct += 1
 
-            logger.info("  Running optimizer step...")
-            optimizer.step()
-            optimizer.zero_grad()
+                    # Build transcript text for evaluator (plain string, not tg.Variable)
+                    transcript_text = render_transcript_text(
+                        sample["question"], result["rounds"]
+                    )
 
-            total_steps += 1
-            logger.info(
-                f"  Updated prompt (first 200 chars): {debater_prompt.value[:200]}..."
-            )
+                    # Get per-agent feedback (one evaluator call → N feedback strings)
+                    evaluate_fn = create_per_agent_evaluator(
+                        ground_truth=sample["ground_truth"],
+                        t0_parsed=result["t0_parsed"],
+                        t0_majority=result["t0_majority_vote"],
+                        evaluator_engine=evaluator_engine,
+                        n_agents=args.n_agents,
+                    )
+                    agent_feedbacks = evaluate_fn(transcript_text)
 
-            # Save prompt version
-            prompt_history.append(
-                {
-                    "schema_version": ARTIFACT_SCHEMA_VERSION,
-                    "epoch": epoch,
-                    "batch": batch_idx,
-                    "prompt": debater_prompt.value,
-                    "train_batch_accuracy": batch_accuracy,
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            )
-            save_json(prompt_history, artifact_paths["prompt_history"])
+                    # Inject per-agent gradients directly onto prompt Variables.
+                    # We skip backward() entirely because:
+                    #   1. backward(engine=) raises when global engine is set
+                    #   2. backward() clears self.gradients on the root var
+                    # TGD.step() reads parameter.get_gradient_text(), so injecting
+                    # here is sufficient — the optimizer sees the routed feedback.
+                    for i, (prompt, feedback) in enumerate(
+                        zip(debater_prompts, agent_feedbacks)
+                    ):
+                        grad = tg.Variable(
+                            feedback,
+                            requires_grad=False,
+                            role_description=(
+                                f"evaluator feedback for agent {i + 1}'s system prompt"
+                            ),
+                        )
+                        prompt.gradients.add(grad)
+                        logger.info(
+                            f"    Agent {i+1} feedback (first 100 chars): {feedback[:100]}..."
+                        )
+
+                    # Per-agent optimizer step (no backward() needed)
+                    logger.info("  Running per-agent optimizer steps...")
+                    for i, opt in enumerate(optimizers):
+                        opt.step()
+                        opt.zero_grad()
+
+                    if args.save_text_history:
+                        append_jsonl_record(
+                            text_history_paths["text_history_file"],
+                            build_train_text_history_record(
+                                sample=sample,
+                                result=result,
+                                prompt_before_step=prompts_before_step,
+                                epoch=epoch,
+                                batch_idx=batch_idx,
+                                sample_position=si,
+                                evaluator_feedback=agent_feedbacks,
+                            ),
+                        )
+
+                batch_accuracy = batch_correct / len(batch)
+                logger.info(
+                    f"  Batch accuracy: {batch_correct}/{len(batch)} = {batch_accuracy:.2%}"
+                )
+                total_steps += 1
+                for i, p in enumerate(debater_prompts):
+                    logger.info(f"  Agent {i+1} updated prompt (first 120 chars): {p.value[:120]}...")
+
+                prompt_history.append(
+                    {
+                        "schema_version": ARTIFACT_SCHEMA_VERSION,
+                        "epoch": epoch,
+                        "batch": batch_idx,
+                        "prompts": [p.value for p in debater_prompts],
+                        "train_batch_accuracy": batch_accuracy,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
+                save_json(prompt_history, artifact_paths["prompt_history"])
+
+            else:
+                # --- Shared prompt training path (original) ---
+                losses = []
+                for si, sample in enumerate(batch):
+                    logger.info(
+                        f"  Sample {si+1}/{len(batch)}: "
+                        f"Q='{sample['question'][:60]}...' GT={sample['ground_truth']}"
+                    )
+
+                    result = mad_forward_pass(
+                        question=sample["question"],
+                        ground_truth=sample["ground_truth"],
+                        debater_prompt=debater_prompt,
+                        debater_engine=debater_engine,
+                        n_agents=args.n_agents,
+                        n_rounds=args.n_rounds,
+                        allow_failed_generations=args.allow_failed_generations,
+                    )
+
+                    t0_mv = result["t0_majority_vote"]
+                    final_mv = result["final_majority_vote"]
+                    gt = sample["ground_truth"]
+                    logger.info(
+                        f"    t0_parsed={result['t0_parsed']}, "
+                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt) else 'wrong'})"
+                    )
+                    logger.info(
+                        f"    final_MV={final_mv} ({'correct' if result['final_correct'] else 'wrong'})"
+                    )
+                    if result["final_correct"]:
+                        batch_correct += 1
+
+                    loss_fn = create_evaluator_loss(
+                        ground_truth=sample["ground_truth"],
+                        t0_parsed=result["t0_parsed"],
+                        t0_majority=result["t0_majority_vote"],
+                        evaluator_engine=evaluator_engine,
+                    )
+                    loss = loss_fn(result["transcript_var"])
+                    losses.append(loss)
+                    if args.save_text_history:
+                        append_jsonl_record(
+                            text_history_paths["text_history_file"],
+                            build_train_text_history_record(
+                                sample=sample,
+                                result=result,
+                                prompt_before_step=prompt_before_step,
+                                epoch=epoch,
+                                batch_idx=batch_idx,
+                                sample_position=si,
+                                evaluator_feedback=loss.value,
+                            ),
+                        )
+
+                batch_accuracy = batch_correct / len(batch)
+                logger.info(
+                    f"  Batch accuracy: {batch_correct}/{len(batch)} = {batch_accuracy:.2%}"
+                )
+
+                logger.info("  Aggregating losses and computing backward pass...")
+                total_loss = tg.sum(losses)
+                total_loss.backward()
+
+                logger.info("  Running optimizer step...")
+                optimizer.step()
+                optimizer.zero_grad()
+
+                total_steps += 1
+                logger.info(
+                    f"  Updated prompt (first 200 chars): {debater_prompt.value[:200]}..."
+                )
+
+                prompt_history.append(
+                    {
+                        "schema_version": ARTIFACT_SCHEMA_VERSION,
+                        "epoch": epoch,
+                        "batch": batch_idx,
+                        "prompt": debater_prompt.value,
+                        "train_batch_accuracy": batch_accuracy,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                )
+                save_json(prompt_history, artifact_paths["prompt_history"])
 
     logger.info(f"\nTraining complete. Total optimizer steps: {total_steps}")
-    logger.info(f"Final optimized prompt:\n{debater_prompt.value}")
+    if args.per_agent_prompts:
+        for i, p in enumerate(debater_prompts):
+            logger.info(f"Final agent {i+1} prompt:\n{p.value}")
+    else:
+        logger.info(f"Final optimized prompt:\n{debater_prompt.value}")
     logger.info(f"Prompt history saved to {artifact_paths['prompt_history']}")
 
+    if args.per_agent_prompts:
+        return [p.value for p in debater_prompts], prompt_history
     return debater_prompt.value, prompt_history
 
 
