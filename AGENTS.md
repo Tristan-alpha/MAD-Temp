@@ -60,6 +60,7 @@ final debate accuracy, per-round accuracy trajectory, and variance across seeds.
 ## TG-MAD Operational Notes
 - For local vLLM serving, `localhost` means the current machine or SLURM job node. Train/eval must reach servers on the same node unless an explicit cross-node host is configured.
 - Training requires both the debater server and the evaluator/backward server at the same time. Evaluation only requires the debater server.
+- Submit work through SLURM instead of trying to run it locally.
 - TextGrad failures can occur at `optimizer.step()` even when debate forward passes succeed. Treat the optimizer prompt length as a first-class constraint.
 - The main context-overflow mitigation that worked in practice was: batch size `1`, `n_rounds=1` (`t0` plus one debate round), a shorter second-round debate prompt, and `max_model_len=16384`.
 - `Qwen/Qwen3-30B-A3B-Instruct-2507` did not fit as a local vLLM evaluator on one 47 GB GPU, but it did start successfully with tensor parallel size `2` across two GPUs.
