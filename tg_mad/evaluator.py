@@ -144,15 +144,10 @@ Analyze the debate transcript below. For EACH agent, evaluate:
 
 You MUST structure your output with these exact markers:
 
-[AGENT_1_FEEDBACK]
-<feedback for Agent 1's system prompt>
-
-[AGENT_2_FEEDBACK]
-<feedback for Agent 2's system prompt>
-
-[AGENT_3_FEEDBACK]
-<feedback for Agent 3's system prompt>
-
+{chr(10).join(
+    f"[AGENT_{i+1}_FEEDBACK]{chr(10)}<feedback for Agent {i+1}'s system prompt>{chr(10)}"
+    for i in range(n_agents)
+)}
 Be specific. Reference exact moments in the transcript."""
 
     def evaluate_transcript(transcript_text: str) -> List[str]:

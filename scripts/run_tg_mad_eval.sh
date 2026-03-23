@@ -1,31 +1,31 @@
 #!/bin/bash
 
-#SBATCH -p RTXA6Kq
-#SBATCH -w node15
-#SBATCH --gres=gpu:0
+# Canonical TG-MAD evaluation entrypoint.
+# Configure experiments by exporting env vars before `sbatch` rather than
+# using multiple wrapper presets.
+
+#SBATCH -p PA100q
+#SBATCH --gres=gpu:1
 #SBATCH -n 1
 #SBATCH -c 4
 #SBATCH -o job-tgmad-eval-%j.output
+#SBATCH --time=24:00:00
 #SBATCH -J tgmad-eval
 
 set -euo pipefail
 
-echo "=== TG-MAD Evaluation ==="
-echo "Node: $(hostname)"
-date
+REPO_ROOT="${REPO_ROOT:-/export/home3/dazhou/debate-or-vote}"
+cd "${REPO_ROOT}"
 
-export OPENAI_API_KEY=EMPTY
-export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$(pwd)"
+# Avoid inheriting train-time GPU free-memory thresholds (for example,
+# DEBATER_MIN_FREE_MIB=12000) that can make eval auto-pick fail on shared nodes.
+# Set TG_MAD_PRESERVE_DEBATER_MIN_FREE_MIB=1 to keep the inherited value.
+if [[ "${TG_MAD_PRESERVE_DEBATER_MIN_FREE_MIB:-0}" != "1" ]]; then
+	unset DEBATER_MIN_FREE_MIB
+fi
 
-# Verify debater server is running (evaluator not needed for eval)
-echo "Checking vLLM debater server..."
-curl -s http://localhost:8000/health > /dev/null || { echo "ERROR: Debater server not running on port 8000. On SLURM, prefer scripts/run_tg_mad_eval_1gpu.sh."; exit 1; }
-echo "Debater server is responsive."
+# Default TG-MAD evaluations to saving debate text history. This remains
+# overridable by the caller.
+export SAVE_TEXT_HISTORY="${SAVE_TEXT_HISTORY:-1}"
 
-python -u tg_mad/evaluate.py \
-    --debater_base_url http://localhost:8000/v1 \
-    --prompt_history out/tg_mad/prompt_history.json \
-    --output_dir out/tg_mad/
-
-echo "Evaluation complete."
-date
+exec python -m tg_mad.job_runner eval "$@"

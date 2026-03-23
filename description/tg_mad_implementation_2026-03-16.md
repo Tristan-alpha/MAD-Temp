@@ -2,6 +2,12 @@
 
 Date: 2026-03-16
 
+Historical note: the repo later consolidated the TG-MAD SLURM entrypoints down
+to the canonical `scripts/run_tg_mad_train.sh` and
+`scripts/run_tg_mad_eval.sh` wrappers. Older wrapper-script names mentioned in
+this note are kept here as historical context, not as current recommended
+entrypoints.
+
 ## Scope
 
 This note documents the TG-MAD implementation and runtime integration work added to this repository on 2026-03-16. The goal was to add a TextGrad-based multi-agent debate workflow under `tg_mad/`, provide SLURM entry points for training and evaluation with local vLLM servers, review the runtime failures, and converge on a working 2-GPU training setup.

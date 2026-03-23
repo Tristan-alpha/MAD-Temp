@@ -47,6 +47,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description="TG-MAD Evaluation")
     parser.add_argument("--debater_base_url", type=str, default=None)
     parser.add_argument("--prompt_history", type=str, default=None)
+    parser.add_argument(
+        "--prompt_index",
+        type=int,
+        default=None,
+        help=(
+            "Prompt-history index to evaluate. Defaults to the latest checkpoint "
+            "when omitted. Negative values follow normal Python indexing."
+        ),
+    )
     parser.add_argument("--output_dir", type=str, default=OUTPUT_DIR)
     parser.add_argument("--results_file", type=str, default=None)
     parser.add_argument("--split_info_file", type=str, default=None)
@@ -87,6 +96,7 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "schema_version": ARTIFACT_SCHEMA_VERSION,
         "output_dir": artifact_paths["output_dir"],
         "prompt_history_file": prompt_history_path,
+        "prompt_index": args.prompt_index,
         "results_file": artifact_paths["eval_results"],
         "split_info_file": artifact_paths["split_info"],
         "run_config_file": artifact_paths["run_config"],
@@ -105,6 +115,22 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "existing_data": args.existing_data,
         "allow_failed_generations": args.allow_failed_generations,
     }
+
+
+def resolve_prompt_checkpoint(prompt_history, prompt_index):
+    """Select one prompt-history entry, defaulting to the latest checkpoint."""
+    if not prompt_history:
+        raise ValueError("Prompt history is empty; cannot evaluate.")
+
+    resolved_index = len(prompt_history) - 1 if prompt_index is None else prompt_index
+    if resolved_index < 0:
+        resolved_index += len(prompt_history)
+    if resolved_index < 0 or resolved_index >= len(prompt_history):
+        raise IndexError(
+            f"Prompt index {prompt_index} is out of range for history "
+            f"with {len(prompt_history)} entries."
+        )
+    return resolved_index, prompt_history[resolved_index]
 
 
 def build_eval_text_history_record(
@@ -517,26 +543,36 @@ def evaluate(args):
             text_history_paths["text_history_file"],
         )
 
-    # Load optimized prompt(s) — supports both shared and per-agent formats
+    # Load selected prompt(s) — supports both shared and per-agent formats
     logger.info(f"Loading prompt history from {prompt_history_path}")
     with open(prompt_history_path, "r") as f:
         prompt_history = json.load(f)
-    last_entry = prompt_history[-1]
+    selected_index, selected_entry = resolve_prompt_checkpoint(
+        prompt_history,
+        args.prompt_index,
+    )
     first_entry = prompt_history[0]
-    per_agent_mode = "prompts" in last_entry
+    per_agent_mode = "prompts" in selected_entry
     if per_agent_mode:
-        optimized_prompt = last_entry["prompts"]   # list[str]
+        optimized_prompt = selected_entry["prompts"]   # list[str]
         initial_prompt = first_entry["prompts"]
-        logger.info("Per-agent prompt mode detected (%d prompts)", len(optimized_prompt))
+        logger.info(
+            "Per-agent prompt mode detected (%d prompts) at history index %d",
+            len(optimized_prompt),
+            selected_index,
+        )
         for i, p in enumerate(optimized_prompt):
             logger.info(f"  Agent {i+1} prompt (first 120 chars): {p[:120]}...")
     else:
-        optimized_prompt = last_entry["prompt"]    # str
+        optimized_prompt = selected_entry["prompt"]    # str
         initial_prompt = first_entry["prompt"]
+        logger.info("Evaluating prompt history index %d", selected_index)
         logger.info(f"Optimized prompt (first 200 chars): {optimized_prompt[:200]}...")
     prompt_reference = {
         "prompt_history_file": prompt_history_path,
-        "optimized_prompt_index": len(prompt_history) - 1,
+        "optimized_prompt_index": selected_index,
+        "optimized_prompt_epoch": selected_entry.get("epoch"),
+        "optimized_prompt_batch": selected_entry.get("batch"),
     }
 
     # Load data
@@ -634,6 +670,9 @@ def evaluate(args):
         "num_test_samples": len(test_samples),
         "optimized_prompt": optimized_prompt,
         "initial_prompt": initial_prompt,
+        "optimized_prompt_index": selected_index,
+        "optimized_prompt_epoch": selected_entry.get("epoch"),
+        "optimized_prompt_batch": selected_entry.get("batch"),
     }
 
     # Save results

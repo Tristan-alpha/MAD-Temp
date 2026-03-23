@@ -390,12 +390,14 @@ def train(args):
                     )
                     agent_feedbacks = evaluate_fn(transcript_text)
 
-                    # Inject per-agent gradients directly onto prompt Variables.
+                    # Accumulate per-agent gradients onto prompt Variables.
                     # We skip backward() entirely because:
                     #   1. backward(engine=) raises when global engine is set
                     #   2. backward() clears self.gradients on the root var
                     # TGD.step() reads parameter.get_gradient_text(), so injecting
                     # here is sufficient — the optimizer sees the routed feedback.
+                    # Gradients accumulate across all samples in the batch;
+                    # optimizer.step() runs once after the batch loop.
                     for i, (prompt, feedback) in enumerate(
                         zip(debater_prompts, agent_feedbacks)
                     ):
@@ -411,12 +413,6 @@ def train(args):
                             f"    Agent {i+1} feedback (first 100 chars): {feedback[:100]}..."
                         )
 
-                    # Per-agent optimizer step (no backward() needed)
-                    logger.info("  Running per-agent optimizer steps...")
-                    for i, opt in enumerate(optimizers):
-                        opt.step()
-                        opt.zero_grad()
-
                     if args.save_text_history:
                         append_jsonl_record(
                             text_history_paths["text_history_file"],
@@ -431,10 +427,16 @@ def train(args):
                             ),
                         )
 
+                # Per-agent optimizer step after all samples in the batch
                 batch_accuracy = batch_correct / len(batch)
                 logger.info(
                     f"  Batch accuracy: {batch_correct}/{len(batch)} = {batch_accuracy:.2%}"
                 )
+                logger.info("  Running per-agent optimizer steps...")
+                for i, opt in enumerate(optimizers):
+                    opt.step()
+                    opt.zero_grad()
+
                 total_steps += 1
                 for i, p in enumerate(debater_prompts):
                     logger.info(f"  Agent {i+1} updated prompt (first 120 chars): {p.value[:120]}...")

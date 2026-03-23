@@ -61,6 +61,11 @@ final debate accuracy, per-round accuracy trajectory, and variance across seeds.
 - For local vLLM serving, `localhost` means the current machine or SLURM job node. Train/eval must reach servers on the same node unless an explicit cross-node host is configured.
 - Training requires both the debater server and the evaluator/backward server at the same time. Evaluation only requires the debater server.
 - Submit work through SLURM instead of trying to run it locally.
+- Before submitting TG-MAD jobs, prefer checking cluster GPU availability with the local `gpu` helper (`python scripts/gpu_monitor.py`). If that helper is unavailable in a non-interactive shell, fall back to `python scripts/gpu_monitor.py --partitions PA100q` or `sinfo`.
+- Prefer partition-only scheduling for TG-MAD jobs; do not pin specific nodes unless the user explicitly asks for it.
+- For 30B local evaluator runs, prefer the `PA100q` partition, request 3 GPUs total, and run the evaluator with tensor parallel size `2` across 2 GPUs while leaving 1 GPU for the debater. When auto-pick is enabled, prefer the cleanest allocated GPUs for the evaluator.
+- For every experiment run, use a sleep-based wait/check loop and do not report completion until training/evaluation is stable.
+- If training/evaluation shows problems, diagnose and fix them, then continue monitoring until the run is stable before finishing the response.
 - TextGrad failures can occur at `optimizer.step()` even when debate forward passes succeed. Treat the optimizer prompt length as a first-class constraint.
 - The main context-overflow mitigation that worked in practice was: batch size `1`, `n_rounds=1` (`t0` plus one debate round), a shorter second-round debate prompt, and `max_model_len=16384`.
 - `Qwen/Qwen3-30B-A3B-Instruct-2507` did not fit as a local vLLM evaluator on one 47 GB GPU, but it did start successfully with tensor parallel size `2` across two GPUs.
