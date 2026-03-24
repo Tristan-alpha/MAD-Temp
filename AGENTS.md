@@ -1,86 +1,91 @@
 # AGENTS.md
 
 ## Mission
-Build and evaluate TextGrad-based optimization for multi-agent debate, with the goal of improving final debate accuracy over majority voting while preserving reproducibility and fair baseline comparisons.
+Build and evaluate TextGrad-based optimization for multi-agent debate. The core goal is to improve final debate accuracy over fixed baselines while keeping runs reproducible and comparisons fair.
 
-## Project Scope
-- Codebase focus:
-`src/main.py`, `src/evaluator.py`, `src/model/*`, `scripts/*.sh`, `scripts/analyze_results.py`.
-- Primary research question:
-How TextGrad-based strategy optimization affects debate dynamics and final accuracy.
-- Primary feature direction:
-Self-supervised strategy updates that improve debate quality without leaking ground-truth labels at inference time.
+## Working Rules
+- Read this file before making repo changes.
+- State the active objective and assumptions before substantial work.
+- Inspect relevant files before editing.
+- Prefer small, backward-compatible changes behind explicit flags or new CLI args.
+- Keep deterministic seeds and log all run-critical config fields.
+- After changes, run a targeted validation command and report the result.
+- Append a short entry to `diary/<YYYY-MM-DD>.md` for every coding-task change.
 
-## Non-Negotiable Rules
-- Keep default behavior unchanged unless an explicit flag enables new behavior.
-- Preserve reproducibility: deterministic seeds and logged config fields.
-- Do not mix analysis outputs from different dataset/model settings without explicit grouping keys.
-- Avoid label leakage:
-No use of reference answers to choose inference-time strategy.
+## Project Constraints
+- Do not change default behavior unless a flag or explicit config enables it.
+- Do not use ground-truth labels to choose inference-time behavior.
+- Keep generation temperature fixed at `1.0`.
+- Always compare TG-MAD against fixed baselines, including majority vote.
+- Keep dataset/model settings separated in outputs and analysis.
 
-## Required Start-of-Task Workflow
-For every coding task in this repository:
-1. Read this `AGENTS.md` first.
-2. State the active objective and assumptions.
-3. Inspect relevant files before editing.
-4. Propose minimal changes that preserve backward compatibility.
-5. After changes, run a targeted validation command and report result.
-6. Update the daily diary file with a short summary of the changes made that day.
+## Artifacts
+- Put experiment outputs under `out/`.
+- Put saved debate/text histories under `out/history/`.
+- Use a fresh `output_dir` for materially different runs.
+- Keep JSON/JSONL schemas additive so older analysis still works.
 
-## Daily Diary
-- Record each coding-task change in a diary file under `diary/` using the current date as the filename, for example `diary/2026-03-16.md`.
-- Append concise entries describing what changed, why, and any validation or run commands that were executed.
-- Keep diary updates additive so the day-by-day history remains easy to audit.
+## Canonical TG-MAD Entrypoints
+- Training: [scripts/run_tg_mad_train.sh](/export/home3/dazhou/debate-or-vote/scripts/run_tg_mad_train.sh)
+- Evaluation: [scripts/run_tg_mad_eval.sh](/export/home3/dazhou/debate-or-vote/scripts/run_tg_mad_eval.sh)
+- Orchestration: [tg_mad/job_runner.py](/export/home3/dazhou/debate-or-vote/tg_mad/job_runner.py)
 
-## Strategy Optimization Contract
-- Optimization inputs may include only signals available at decision time, such as:
-prior-round responses, disagreement statistics, vote entropy, response length/format quality, and historical self-supervised reward estimates.
-- Optimization must support:
-fixed baseline behavior and optional learned behavior behind explicit flags.
-- Self-supervised updates should rely on delayed/proxy feedback from debate outcomes, consistency, or agreement structure, not privileged labels during inference.
-- Generation temperature is fixed to `1.0`.
+Configure experiments by exporting env vars before `sbatch`; do not add new wrapper scripts unless there is a strong reason. Common env vars:
+- `OUTPUT_DIR`
+- `DATASET`
+- `TRAIN_EXISTING_DATA`
+- `EVAL_EXISTING_DATA`
+- `PROMPT_HISTORY_PATH`
+- `DEBATER_MODEL_NAME`
+- `EVALUATOR_MODEL_NAME`
+- `TRAIN_N_AGENTS` / `EVAL_N_AGENTS`
+- `TRAIN_N_ROUNDS` / `EVAL_N_ROUNDS`
 
-## Interface and Configuration Guidelines
-- Add new CLI args instead of overloading old ones.
-- Keep existing args functional, including `--max_new_tokens`.
-- If adding optimization logic, use explicit flags and log configuration into output metadata for each run.
+## job_runner.py Notes
+- `python -m tg_mad.job_runner train|eval --dry-run` is the fastest way to inspect the exact launch plan.
+- `job_runner.py` handles local vLLM server startup, health checks, port conflicts, GPU preflight checks, and CLI/env plumbing for train/eval.
+- `START_DEBATER_SERVER=0` and `START_EVALUATOR_SERVER=0` let a job reuse already-running servers.
+- Prefer GPU auto-pick on shared nodes:
+  - `DEBATER_AUTO_PICK_GPU=1`
+  - `EVALUATOR_AUTO_PICK_GPU=1`
+  - `EVALUATOR_AUTO_PICK_BEFORE_DEBATER=1`
+  - `EVALUATOR_AUTO_PICK_PREFER_TOPOLOGY=1`
+- Use `DEBATER_MIN_FREE_MIB` and `EVALUATOR_MIN_FREE_MIB` to reject dirty cards before startup.
+- For long model startup, increase `MAX_WAIT_SECONDS`; `job_runner.py` propagates it to the vLLM engine-ready timeout.
 
-## Evaluation Protocol
-- Always compare against fixed-strategy baselines (including majority vote).
-- Report at least:
-final debate accuracy, per-round accuracy trajectory, and variance across seeds.
-- Keep dataset-specific reporting separated (`gsm8k`, `arithmetics`, `csqa`, etc.).
-- Ensure analysis scripts can still parse historical files and new files.
+## GPU / Partition Experience
+- Submit TG-MAD jobs through SLURM. `localhost` means the current SLURM node, so train/eval and local servers must live on the same node unless a remote host is explicitly configured.
+- Check availability first with `python scripts/gpu_monitor.py`. If needed, fall back to `python scripts/gpu_monitor.py --partitions PA100q` or `sinfo`.
+- Prefer partition-only scheduling. Do not pin specific nodes unless the user explicitly asks.
 
-## Data and Artifact Conventions
-- Keep outputs under `out/` and histories under `out/history`.
-- Do not overwrite prior results silently.
-- Any new output schema must remain JSONL-friendly and versioned with additive fields.
+### PA100q
+- Good default partition for general TG-MAD runs and smaller local serving setups.
+- Not reliable for the local `Qwen/Qwen3-30B-A3B-Instruct-2507` evaluator path in this repo. Repeated failures showed `pynccl`, `flashinfer_cutlass`, and `shm_broadcast` startup problems on 2xA100-40GB even when GPUs were otherwise idle.
+- If a local 30B evaluator is required, do not assume PA100q will be stable. Prefer RTXA6Kq or use an API evaluator.
 
-## TG-MAD Operational Notes
-- For local vLLM serving, `localhost` means the current machine or SLURM job node. Train/eval must reach servers on the same node unless an explicit cross-node host is configured.
-- Training requires both the debater server and the evaluator/backward server at the same time. Evaluation only requires the debater server.
-- Submit work through SLURM instead of trying to run it locally.
-- Before submitting TG-MAD jobs, prefer checking cluster GPU availability with the local `gpu` helper (`python scripts/gpu_monitor.py`). If that helper is unavailable in a non-interactive shell, fall back to `python scripts/gpu_monitor.py --partitions PA100q` or `sinfo`.
-- Prefer partition-only scheduling for TG-MAD jobs; do not pin specific nodes unless the user explicitly asks for it.
-- For 30B local evaluator runs, prefer the `PA100q` partition, request 3 GPUs total, and run the evaluator with tensor parallel size `2` across 2 GPUs while leaving 1 GPU for the debater. When auto-pick is enabled, prefer the cleanest allocated GPUs for the evaluator.
-- For every experiment run, use a sleep-based wait/check loop and do not report completion until training/evaluation is stable.
-- If training/evaluation shows problems, diagnose and fix them, then continue monitoring until the run is stable before finishing the response.
-- TextGrad failures can occur at `optimizer.step()` even when debate forward passes succeed. Treat the optimizer prompt length as a first-class constraint.
-- The main context-overflow mitigation that worked in practice was: batch size `1`, `n_rounds=1` (`t0` plus one debate round), a shorter second-round debate prompt, and `max_model_len=16384`.
-- `Qwen/Qwen3-30B-A3B-Instruct-2507` did not fit as a local vLLM evaluator on one 47 GB GPU, but it did start successfully with tensor parallel size `2` across two GPUs.
-- For SLURM wrapper scripts that call other repo scripts, use an absolute repo path or `cd` into the repo root first. SLURM may execute a copied script from its spool directory, which breaks relative paths.
-- Keep deterministic `400 Bad Request` context-length errors fail-fast. Retrying them only wastes time and hides the real bottleneck.
-- Use separate `output_dir` values for materially different TG-MAD experiments so prompt histories and eval artifacts are not mixed silently.
+### RTXA6Kq
+- This was the stable path for the successful local-30B evaluator experiment.
+- Shared A6000 nodes often have dirty cards; a job may receive nominally idle GPUs that fail free-memory checks or behave inconsistently.
+- For local 30B evaluator runs, it worked better to request a larger GPU pool and let `job_runner.py` auto-pick the clean subset. In practice, requesting 6 GPUs to use an actual 3-GPU layout (2 evaluator + 1 debater) was more reliable than requesting exactly 3.
+- Historical note: node11 showed misleading CUDA state where some visible GPUs failed `torch.cuda.set_device()` even though `nvidia-smi` looked fine. Trust runtime preflight checks over static node assumptions.
 
-## Code Quality Expectations
-- Small, reviewable diffs.
-- Clear naming for optimization state and reward signals.
-- Add short comments only for non-obvious logic.
-- Add or update lightweight tests/check scripts when behavior changes.
+## Local 30B Evaluator Notes
+- `Qwen/Qwen3-30B-A3B-Instruct-2507` did not fit on one ~47 GB GPU.
+- The workable layout was tensor parallel size `2` across two GPUs for the evaluator, plus one separate GPU for the debater.
+- TextGrad can fail at `optimizer.step()` even after debate generation succeeds. Treat evaluator context length as a first-class constraint.
+- Deterministic `400 Bad Request` context-length errors should fail fast; do not mask them with retries.
+- Practical mitigations that helped:
+  - `batch_size=1`
+  - shorter debate depth when needed
+  - reduced prompt verbosity
+  - `max_model_len` tuning on the evaluator
+
+## Monitoring Expectations
+- Use a sleep-based wait/check loop for experiment runs; do not report success until the run is clearly stable.
+- If a run fails, diagnose the cause, fix it, and continue monitoring the replacement run until it is stable.
 
 ## Definition of Done
-- New behavior is flag-gated and backward compatible.
-- A reproducible command is provided.
-- Validation command has been run and result reported.
-- Analysis path for comparing against baseline is documented in the task summary.
+- Behavior is backward compatible unless explicitly enabled otherwise.
+- A reproducible command or launch pattern is available.
+- Validation was run and reported.
+- The result can still be compared cleanly against baseline outputs.
