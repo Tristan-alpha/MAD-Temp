@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from tg_mad.data_loader import get_fixed_pool_size, load_task_questions
+from tg_mad.data_loader import build_icl_prompt, get_fixed_pool_size, load_task_questions
 from tg_mad.engine import create_debater_engine
 from tg_mad.task_spec import get_task_spec
 from tg_mad.utils import save_json, set_seeds
@@ -32,6 +32,26 @@ def parse_args():
     parser.add_argument("--max_new_tokens", type=int, default=2048)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--allow_failed_generations", action="store_true")
+    # ICL (in-context learning) options
+    parser.add_argument(
+        "--icl_mode",
+        type=str,
+        default="none",
+        choices=["none", "qa", "qra"],
+        help="ICL mode: 'none' (standard baseline), 'qa' (question+answer), 'qra' (question+reasoning+answer).",
+    )
+    parser.add_argument(
+        "--icl_history_path",
+        type=str,
+        default=None,
+        help="Train-pool JSONL for qra mode (provides correct agent responses).",
+    )
+    parser.add_argument(
+        "--icl_max_examples",
+        type=int,
+        default=None,
+        help="Max number of ICL examples (default: use all train samples).",
+    )
     return parser.parse_args()
 
 
@@ -41,11 +61,16 @@ def _sanitize_model_label(model_name: str) -> str:
 
 def _default_output_path(args, data_size: int) -> str:
     model_label = _sanitize_model_label(args.debater_model)
+    icl_tag = ""
+    if getattr(args, "icl_mode", "none") != "none":
+        icl_tag = f"_ICL={args.icl_mode}"
+        if args.icl_max_examples is not None:
+            icl_tag += f"_{args.icl_max_examples}"
     return os.path.join(
         "out",
         "history",
         args.dataset,
-        f"{args.dataset}_{data_size}__{model_label}_N={args.n_agents}_R={args.n_rounds}.jsonl",
+        f"{args.dataset}_{data_size}__{model_label}_N={args.n_agents}_R={args.n_rounds}{icl_tag}.jsonl",
     )
 
 
@@ -123,12 +148,26 @@ def generate_history(args):
         max_tokens=args.max_new_tokens,
     )
 
+    # Build ICL system prompt if enabled
+    icl_system_prompt = None
+    if args.icl_mode != "none":
+        icl_system_prompt = build_icl_prompt(
+            dataset=args.dataset,
+            data_dir=args.data_dir,
+            seed=args.seed,
+            icl_mode=args.icl_mode,
+            history_path=args.icl_history_path,
+            max_examples=args.icl_max_examples,
+        )
+        print(f"ICL system prompt built ({len(icl_system_prompt)} chars, ~{len(icl_system_prompt)//4} tokens)")
+
     model_label = _sanitize_model_label(args.debater_model)
     agent_names = [
         f"{args.dataset}_{data_size}__{model_label}__None__Agent{i+1}"
         for i in range(args.n_agents)
     ]
 
+    total_samples = len(questions)
     histories = []
     for sample_idx, (question, answer) in enumerate(zip(questions, answers)):
         set_seeds(args.seed + sample_idx)
@@ -136,6 +175,8 @@ def generate_history(args):
         round_zero_messages = [
             {"role": "user", "content": question + task_spec.answer_suffix}
         ]
+        if icl_system_prompt is not None:
+            round_zero_messages.insert(0, {"role": "system", "content": icl_system_prompt})
         responses = [
             _generate_one(
                 engine=debater_engine,
@@ -158,10 +199,13 @@ def generate_history(args):
             )
             responses = []
             for agent_idx, agent_name in enumerate(agent_names):
+                agent_msgs = [round_messages[agent_name]]
+                if icl_system_prompt is not None:
+                    agent_msgs.insert(0, {"role": "system", "content": icl_system_prompt})
                 responses.append(
                     _generate_one(
                         engine=debater_engine,
-                        messages=[round_messages[agent_name]],
+                        messages=agent_msgs,
                         agent_idx=agent_idx,
                         sample_idx=sample_idx,
                         allow_failed_generations=args.allow_failed_generations,
@@ -172,6 +216,20 @@ def generate_history(args):
             prev_responses = agent_responses
 
         histories.append(rounds_data)
+
+        # Progress logging
+        final_round = rounds_data[str(args.n_rounds)]
+        is_correct = final_round.get("debate_answer_iscorr", False)
+        running_acc = sum(
+            1 for h in histories
+            if h[str(args.n_rounds)].get("debate_answer_iscorr", False)
+        ) / len(histories)
+        print(
+            f"  [{sample_idx + 1}/{total_samples}] "
+            f"{'correct' if is_correct else 'wrong':>7s}  "
+            f"running_acc={running_acc:.2%}",
+            flush=True,
+        )
 
     with open(output_path, "w") as f:
         for record in histories:
@@ -188,6 +246,9 @@ def generate_history(args):
         "max_new_tokens": args.max_new_tokens,
         "seed": args.seed,
         "num_samples": len(histories),
+        "icl_mode": args.icl_mode,
+        "icl_max_examples": args.icl_max_examples,
+        "icl_history_path": args.icl_history_path,
     }
     save_json(metadata, str(Path(output_path).with_suffix(".meta.json")))
     print(f"Wrote {len(histories)} records to {output_path}")

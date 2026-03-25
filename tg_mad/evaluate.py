@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import time
+from typing import List, Optional
 
 import numpy as np
 import matplotlib
@@ -30,6 +31,7 @@ from tg_mad.data_loader import (
     load_existing_data,
     load_gsm8k_questions,
     load_split_info,
+    load_task_questions,
     select_train_test_split,
 )
 from tg_mad.forward_pass import mad_forward_pass
@@ -99,6 +101,12 @@ def parse_args():
         action="store_true",
         help="Continue with placeholder text if the debater backend fails.",
     )
+    parser.add_argument(
+        "--icl_existing_data",
+        type=str,
+        default=None,
+        help="Path to ICL-MAD eval-pool JSONL for side-by-side comparison.",
+    )
     return parser.parse_args()
 
 
@@ -129,6 +137,7 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "train_existing_data": args.train_existing_data,
         "eval_existing_data": args.eval_existing_data,
         "allow_failed_generations": args.allow_failed_generations,
+        "icl_existing_data": getattr(args, "icl_existing_data", None),
     }
 
 
@@ -318,6 +327,77 @@ def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
     return results
 
 
+def compute_icl_baselines(
+    icl_existing_data: List[dict],
+    ground_truths: List,
+    *,
+    dataset: str,
+    n_rounds=N_ROUNDS,
+):
+    """Compute ICL-MAD accuracy from a separate ICL JSONL history.
+
+    Unlike compute_baselines (which extracts metrics from the same samples),
+    this takes raw JSONL records + ground truths and returns ICL-MAD metrics.
+    """
+    total = len(icl_existing_data)
+    if total == 0:
+        return None
+
+    mad_correct = 0
+    round_agent_correct = {t: 0 for t in range(n_rounds + 1)}
+    round_agent_total = {t: 0 for t in range(n_rounds + 1)}
+    # Correction/subversion relative to ICL t=0 MV
+    correction = 0
+    subversion = 0
+    maintained_correct = 0
+    maintained_wrong = 0
+
+    for record, gt in zip(icl_existing_data, ground_truths):
+        # ICL-MAD final accuracy
+        final_round = str(n_rounds)
+        mad_is_correct = record[final_round].get("debate_answer_iscorr", False)
+        if mad_is_correct:
+            mad_correct += 1
+
+        # ICL MV at t=0
+        mv = normalize_stored_answer(record["0"].get("debate_answer"), dataset)
+        mv_is_correct = answer_is_correct(mv, gt, dataset=dataset)
+
+        # Correction/subversion
+        if mv_is_correct and not mad_is_correct:
+            subversion += 1
+        elif not mv_is_correct and mad_is_correct:
+            correction += 1
+        elif mv_is_correct and mad_is_correct:
+            maintained_correct += 1
+        else:
+            maintained_wrong += 1
+
+        # Round-by-round
+        for t in range(n_rounds + 1):
+            round_key = str(t)
+            if round_key in record:
+                iscorr = record[round_key].get("final_answer_iscorr", [])
+                for is_c in iscorr:
+                    round_agent_total[t] += 1
+                    if is_c:
+                        round_agent_correct[t] += 1
+
+    return {
+        "icl_mad_accuracy": mad_correct / total,
+        "icl_mad_round_by_round": {
+            f"t{t}": round_agent_correct[t] / round_agent_total[t]
+            if round_agent_total[t]
+            else 0
+            for t in range(n_rounds + 1)
+        },
+        "icl_mad_correction_rate": correction / total,
+        "icl_mad_subversion_rate": subversion / total,
+        "icl_mad_maintained_correct_rate": maintained_correct / total,
+        "icl_mad_maintained_wrong_rate": maintained_wrong / total,
+    }
+
+
 # ─── TG-MAD evaluation ─────────────────────────────────────────────────────
 
 
@@ -448,9 +528,10 @@ def evaluate_tgmad(
 
 
 def generate_plots(eval_results, output_dir=OUTPUT_DIR):
-    """Generate all 3 evaluation plots."""
+    """Generate all 3 evaluation plots. Includes ICL-MAD when present."""
     os.makedirs(output_dir, exist_ok=True)
     n_rounds = len(eval_results["round_by_round"]["standard_mad"])
+    has_icl = "icl_mad" in eval_results.get("round_by_round", {})
 
     # 1. Round-by-round accuracy comparison
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -461,10 +542,14 @@ def generate_plots(eval_results, output_dir=OUTPUT_DIR):
     tg_accs = [eval_results["round_by_round"]["tgmad"][f"t{t}"] for t in rounds]
 
     ax.plot(rounds, std_accs, "o-", label="Standard MAD", color="tab:blue", linewidth=2)
+    if has_icl:
+        icl_accs = [eval_results["round_by_round"]["icl_mad"][f"t{t}"] for t in rounds]
+        ax.plot(rounds, icl_accs, "D-", label="ICL-MAD", color="tab:purple", linewidth=2)
     ax.plot(rounds, tg_accs, "s-", label="TG-MAD", color="tab:orange", linewidth=2)
     ax.set_xlabel("Debate Round", fontsize=12)
     ax.set_ylabel("Mean Agent Accuracy", fontsize=12)
-    ax.set_title("Round-by-Round Accuracy: Standard MAD vs TG-MAD", fontsize=13)
+    title_suffix = " vs ICL-MAD" if has_icl else ""
+    ax.set_title(f"Round-by-Round Accuracy: Standard MAD{title_suffix} vs TG-MAD", fontsize=13)
     ax.set_xticks(rounds)
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
@@ -473,7 +558,7 @@ def generate_plots(eval_results, output_dir=OUTPUT_DIR):
     plt.close(fig)
 
     # 2. Subversion / correction bar chart
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(10 if has_icl else 8, 5))
     categories = ["Correction", "Subversion", "Maintained\nCorrect", "Maintained\nWrong"]
     std_vals = [
         eval_results["correction_rate"]["standard_mad"],
@@ -489,9 +574,21 @@ def generate_plots(eval_results, output_dir=OUTPUT_DIR):
     ]
 
     x = np.arange(len(categories))
-    width = 0.35
-    ax.bar(x - width / 2, std_vals, width, label="Standard MAD", color="tab:blue")
-    ax.bar(x + width / 2, tg_vals, width, label="TG-MAD", color="tab:orange")
+    if has_icl:
+        icl_vals = [
+            eval_results["correction_rate"]["icl_mad"],
+            eval_results["subversion_rate"]["icl_mad"],
+            eval_results["maintained_correct_rate"]["icl_mad"],
+            eval_results["maintained_wrong_rate"]["icl_mad"],
+        ]
+        width = 0.25
+        ax.bar(x - width, std_vals, width, label="Standard MAD", color="tab:blue")
+        ax.bar(x, icl_vals, width, label="ICL-MAD", color="tab:purple")
+        ax.bar(x + width, tg_vals, width, label="TG-MAD", color="tab:orange")
+    else:
+        width = 0.35
+        ax.bar(x - width / 2, std_vals, width, label="Standard MAD", color="tab:blue")
+        ax.bar(x + width / 2, tg_vals, width, label="TG-MAD", color="tab:orange")
     ax.set_ylabel("Rate", fontsize=12)
     ax.set_title("Correction & Subversion Rates", fontsize=13)
     ax.set_xticks(x)
@@ -505,15 +602,22 @@ def generate_plots(eval_results, output_dir=OUTPUT_DIR):
     plt.close(fig)
 
     # 3. Overall accuracy bar chart
-    fig, ax = plt.subplots(figsize=(7, 5))
-    methods = ["Single\nAgent", "Majority\nVoting", "Standard\nMAD", "TG-MAD"]
+    fig, ax = plt.subplots(figsize=(8 if has_icl else 7, 5))
+    methods = ["Single\nAgent", "Majority\nVoting", "Standard\nMAD"]
     accs = [
         eval_results["single_agent_accuracy"],
         eval_results["mv_accuracy"],
         eval_results["standard_mad_accuracy"],
-        eval_results["tgmad_accuracy"],
     ]
-    colors = ["tab:gray", "tab:green", "tab:blue", "tab:orange"]
+    colors = ["tab:gray", "tab:green", "tab:blue"]
+    if has_icl:
+        methods.append("ICL-MAD")
+        accs.append(eval_results["icl_mad_accuracy"])
+        colors.append("tab:purple")
+    methods.append("TG-MAD")
+    accs.append(eval_results["tgmad_accuracy"])
+    colors.append("tab:orange")
+
     bars = ax.bar(methods, accs, color=colors, width=0.6)
     for bar, acc in zip(bars, accs):
         ax.text(
@@ -651,6 +755,27 @@ def evaluate(args):
     logger.info(f"  MV accuracy: {baseline_results['mv_accuracy']:.2%}")
     logger.info(f"  Standard MAD accuracy: {baseline_results['standard_mad_accuracy']:.2%}")
 
+    # === Compute ICL-MAD baselines (optional) ===
+    icl_results = None
+    if getattr(args, "icl_existing_data", None) is not None:
+        logger.info("Computing ICL-MAD baselines from %s...", args.icl_existing_data)
+        icl_data = load_existing_data(args.icl_existing_data)
+        _, icl_labels = load_task_questions(
+            dataset=args.dataset,
+            data_dir=args.data_dir,
+            pool="eval",
+            data_size=len(icl_data),
+            seed=args.seed,
+        )
+        icl_results = compute_icl_baselines(
+            icl_data,
+            icl_labels,
+            dataset=args.dataset,
+            n_rounds=args.n_rounds,
+        )
+        if icl_results:
+            logger.info(f"  ICL-MAD accuracy: {icl_results['icl_mad_accuracy']:.2%}")
+
     # === Evaluate TG-MAD ===
     logger.info("Evaluating TG-MAD with optimized prompt...")
     debater_engine = create_debater_engine(
@@ -708,6 +833,16 @@ def evaluate(args):
         "optimized_prompt_batch": selected_entry.get("batch"),
     }
 
+    # Merge ICL-MAD results if available
+    if icl_results is not None:
+        eval_results["icl_mad_accuracy"] = icl_results["icl_mad_accuracy"]
+        eval_results["round_by_round"]["icl_mad"] = icl_results["icl_mad_round_by_round"]
+        eval_results["correction_rate"]["icl_mad"] = icl_results["icl_mad_correction_rate"]
+        eval_results["subversion_rate"]["icl_mad"] = icl_results["icl_mad_subversion_rate"]
+        eval_results["maintained_correct_rate"]["icl_mad"] = icl_results["icl_mad_maintained_correct_rate"]
+        eval_results["maintained_wrong_rate"]["icl_mad"] = icl_results["icl_mad_maintained_wrong_rate"]
+        eval_results["icl_existing_data"] = args.icl_existing_data
+
     # Save results
     save_json(eval_results, artifact_paths["eval_results"])
     logger.info(f"Results saved to {artifact_paths['eval_results']}")
@@ -718,12 +853,15 @@ def evaluate(args):
     logger.info("Plots saved.")
 
     # Print summary
+    has_icl = "icl_mad_accuracy" in eval_results
     print("\n" + "=" * 60)
     print("TG-MAD EVALUATION SUMMARY")
     print("=" * 60)
     print(f"  Single Agent:  {eval_results['single_agent_accuracy']:.2%}")
     print(f"  Majority Vote: {eval_results['mv_accuracy']:.2%}")
     print(f"  Standard MAD:  {eval_results['standard_mad_accuracy']:.2%}")
+    if has_icl:
+        print(f"  ICL-MAD:       {eval_results['icl_mad_accuracy']:.2%}")
     print(f"  TG-MAD:        {eval_results['tgmad_accuracy']:.2%}")
     print(
         f"  Total TG-MAD Accuracy on {len(test_samples)} held-out problems: "
@@ -734,17 +872,23 @@ def evaluate(args):
     for t in range(args.n_rounds + 1):
         std = eval_results["round_by_round"]["standard_mad"][f"t{t}"]
         tgm = eval_results["round_by_round"]["tgmad"][f"t{t}"]
-        print(f"  t={t}: Standard MAD={std:.2%}, TG-MAD={tgm:.2%}")
+        line = f"  t={t}: Standard MAD={std:.2%}"
+        if has_icl:
+            icl = eval_results["round_by_round"]["icl_mad"][f"t{t}"]
+            line += f", ICL-MAD={icl:.2%}"
+        line += f", TG-MAD={tgm:.2%}"
+        print(line)
     print()
     print("Correction/Subversion rates:")
-    print(
-        f"  Correction:  Standard MAD={eval_results['correction_rate']['standard_mad']:.2%}, "
-        f"TG-MAD={eval_results['correction_rate']['tgmad']:.2%}"
-    )
-    print(
-        f"  Subversion:  Standard MAD={eval_results['subversion_rate']['standard_mad']:.2%}, "
-        f"TG-MAD={eval_results['subversion_rate']['tgmad']:.2%}"
-    )
+    corr_line = f"  Correction:  Standard MAD={eval_results['correction_rate']['standard_mad']:.2%}"
+    subv_line = f"  Subversion:  Standard MAD={eval_results['subversion_rate']['standard_mad']:.2%}"
+    if has_icl:
+        corr_line += f", ICL-MAD={eval_results['correction_rate']['icl_mad']:.2%}"
+        subv_line += f", ICL-MAD={eval_results['subversion_rate']['icl_mad']:.2%}"
+    corr_line += f", TG-MAD={eval_results['correction_rate']['tgmad']:.2%}"
+    subv_line += f", TG-MAD={eval_results['subversion_rate']['tgmad']:.2%}"
+    print(corr_line)
+    print(subv_line)
     print("=" * 60)
 
     return eval_results

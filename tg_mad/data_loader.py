@@ -210,6 +210,109 @@ def build_samples_from_history(
     return build_samples(questions, answers, existing_data)
 
 
+def build_icl_prompt(
+    *,
+    dataset: str,
+    data_dir: str = "./datasets",
+    seed: int = 42,
+    icl_mode: str = "qa",
+    history_path: Optional[str] = None,
+    max_examples: Optional[int] = None,
+) -> str:
+    """Build an ICL system prompt from the training pool.
+
+    Args:
+        dataset: Dataset name (hh_rlhf, formal_logic, gsm8k).
+        icl_mode: "qa" for question+answer, "qra" for question+reasoning+answer.
+        history_path: Path to train-pool JSONL (required for "qra" mode).
+        max_examples: Cap the number of examples (None = use all).
+
+    Returns:
+        Formatted system prompt string containing ICL examples.
+    """
+    if dataset == "gsm8k":
+        raise NotImplementedError(
+            "gsm8k ICL requires --data_size for train pool; not yet supported."
+        )
+
+    questions, labels = load_task_questions(
+        dataset=dataset,
+        data_dir=data_dir,
+        pool="train",
+        seed=seed,
+    )
+
+    # For qra mode, load correct agent responses from history
+    correct_responses: Optional[List[Optional[str]]] = None
+    if icl_mode == "qra":
+        if history_path is None:
+            raise ValueError("--icl_history_path is required for icl_mode='qra'")
+        history = load_existing_data(history_path)
+        if len(history) != len(questions):
+            raise ValueError(
+                f"ICL history length ({len(history)}) != train pool size ({len(questions)})"
+            )
+        correct_responses = []
+        for i, (record, label) in enumerate(zip(history, labels)):
+            t0 = record.get("0", {})
+            responses = t0.get("responses", {})
+            iscorr = t0.get("final_answer_iscorr", [])
+            agent_names = list(responses.keys())
+            found = None
+            for j, name in enumerate(agent_names):
+                if j < len(iscorr) and iscorr[j]:
+                    found = responses[name]
+                    break
+            correct_responses.append(found)
+
+    # Optionally limit examples
+    indices = list(range(len(questions)))
+    if max_examples is not None and max_examples < len(indices):
+        rng = np.random.RandomState(seed)
+        rng.shuffle(indices)
+        indices = sorted(indices[:max_examples])
+
+    # Build the prompt
+    from tg_mad.task_spec import get_task_prompt_label, is_mcq_dataset
+
+    task_label = get_task_prompt_label(dataset)
+    if is_mcq_dataset(dataset):
+        answer_format = '{final answer: (X)}'
+    else:
+        answer_format = '{final answer: <number>}'
+
+    header = (
+        f"You are participating in a multi-agent {task_label}. "
+        f"Below are examples of correctly answered questions from this task. "
+        f"Use them to guide your reasoning.\n"
+    )
+
+    examples = []
+    for idx, i in enumerate(indices):
+        q = questions[i]
+        label = labels[i]
+        if icl_mode == "qra" and correct_responses[i] is not None:
+            examples.append(
+                f"--- Example {idx + 1} ---\n"
+                f"Question:\n{q}\n"
+                f"A correct agent's reasoning:\n{correct_responses[i]}\n"
+                f"Correct Answer: {label}"
+            )
+        else:
+            examples.append(
+                f"--- Example {idx + 1} ---\n"
+                f"Question:\n{q}\n"
+                f"Correct Answer: {label}"
+            )
+
+    footer = (
+        f"\nAlways end your response with your answer in the format: "
+        f'"{answer_format}".'
+    )
+
+    return header + "\n\n".join(examples) + footer
+
+
 def has_disagreement_at_t0(sample: dict) -> bool:
     """Check if agents disagreed at round 0."""
     answers = sample["0"]["final_answers"]
