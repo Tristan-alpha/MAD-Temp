@@ -14,23 +14,25 @@ from tg_mad.config import (
     EVALUATOR_BASE_URL,
     EVALUATOR_TEMPERATURE,
     EXISTING_DATA_PATH,
-    INITIAL_DEBATER_PROMPT,
-    INITIAL_DEBATER_PROMPTS,
     MAX_NEW_TOKENS,
     N_AGENTS,
     N_ROUNDS,
     NUM_EPOCHS,
-    OPTIMIZER_CONSTRAINTS,
-    OPTIMIZER_CONSTRAINTS_PER_AGENT,
     OUTPUT_DIR,
     SEED,
     TEMPERATURE,
     TRAIN_SIZE,
 )
 from tg_mad.engine import create_debater_engine, create_evaluator_engine, create_api_evaluator_engine
-from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
+from tg_mad.data_loader import (
+    build_samples_from_history,
+    load_existing_data,
+    load_gsm8k_questions,
+    select_train_test_split,
+)
 from tg_mad.forward_pass import mad_forward_pass
 from tg_mad.evaluator import create_evaluator_loss, create_per_agent_evaluator
+from tg_mad.task_spec import get_task_spec
 from tg_mad.utils import (
     append_jsonl_record,
     answer_is_correct,
@@ -49,6 +51,7 @@ from tg_mad.utils import (
 def parse_args():
     parser = argparse.ArgumentParser(description="TG-MAD Training")
     parser.add_argument("--debater_base_url", type=str, default=None)
+    parser.add_argument("--debater_model", type=str, default=None)
     parser.add_argument("--evaluator_base_url", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
     parser.add_argument("--num_epochs", type=int, default=NUM_EPOCHS)
@@ -63,7 +66,10 @@ def parse_args():
     parser.add_argument("--split_info_file", type=str, default=None)
     parser.add_argument("--run_config_file", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="./datasets")
+    parser.add_argument("--dataset", type=str, default="hh_rlhf")
     parser.add_argument("--existing_data", type=str, default=EXISTING_DATA_PATH)
+    parser.add_argument("--train_existing_data", type=str, default=None)
+    parser.add_argument("--eval_existing_data", type=str, default=None)
     parser.add_argument(
         "--save_text_history",
         action="store_true",
@@ -115,6 +121,7 @@ def build_run_config(args, artifact_paths, text_history_paths):
         "text_history_dir": text_history_paths["text_history_dir"],
         "text_history_file": text_history_paths["text_history_file"],
         "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
+        "debater_model": args.debater_model,
         "evaluator_base_url": args.evaluator_base_url or EVALUATOR_BASE_URL,
         "debater_temperature": TEMPERATURE,
         "evaluator_temperature": EVALUATOR_TEMPERATURE,
@@ -127,7 +134,10 @@ def build_run_config(args, artifact_paths, text_history_paths):
         "evaluator_max_new_tokens": args.evaluator_max_new_tokens,
         "seed": args.seed,
         "data_dir": args.data_dir,
+        "dataset": args.dataset,
         "existing_data": args.existing_data,
+        "train_existing_data": args.train_existing_data,
+        "eval_existing_data": args.eval_existing_data,
         "allow_failed_generations": args.allow_failed_generations,
         "evaluator_type": args.evaluator_type,
         "evaluator_model": args.evaluator_model,
@@ -172,11 +182,69 @@ def build_train_text_history_record(
     }
 
 
+def _load_training_samples(args):
+    if args.dataset == "gsm8k" and args.train_existing_data is None and args.eval_existing_data is None:
+        existing_data = load_existing_data(args.existing_data)
+        questions, answers = load_gsm8k_questions(args.data_dir, data_size=len(existing_data))
+        train_samples, test_samples, train_indices = select_train_test_split(
+            existing_data,
+            questions,
+            answers,
+            train_size=args.train_size,
+        )
+        split_info = {
+            "schema_version": ARTIFACT_SCHEMA_VERSION,
+            "dataset": args.dataset,
+            "split_strategy": "gsm8k_disagreement_split",
+            "train_indices": train_indices,
+            "num_test": len(test_samples),
+        }
+        return train_samples, split_info
+
+    if args.dataset != "gsm8k" and args.train_existing_data is None:
+        raise ValueError(
+            f"{args.dataset} training requires --train_existing_data. "
+            "New non-gsm8k datasets must use the split train/eval history interface."
+        )
+
+    train_history_path = args.train_existing_data or args.existing_data
+    if train_history_path is None:
+        raise ValueError(
+            f"{args.dataset} training requires --train_existing_data (or legacy --existing_data)."
+        )
+
+    train_samples = build_samples_from_history(
+        dataset=args.dataset,
+        history_path=train_history_path,
+        data_dir=args.data_dir,
+        pool="train",
+        seed=args.seed,
+    )
+    eval_pool_size = None
+    if args.eval_existing_data:
+        eval_pool_size = len(load_existing_data(args.eval_existing_data))
+    split_info = {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "dataset": args.dataset,
+        "split_strategy": "explicit_train_eval_histories",
+        "train_existing_data": os.path.abspath(train_history_path),
+        "eval_existing_data": (
+            os.path.abspath(args.eval_existing_data)
+            if args.eval_existing_data is not None
+            else None
+        ),
+        "train_pool_size": len(train_samples),
+        "eval_pool_size": eval_pool_size,
+    }
+    return train_samples, split_info
+
+
 def train(args):
     if args.n_agents < 1:
         raise ValueError("--n_agents must be at least 1")
     if args.n_rounds < 0:
         raise ValueError("--n_rounds must be non-negative")
+    task_spec = get_task_spec(args.dataset, n_agents=args.n_agents)
 
     artifact_paths = resolve_artifact_paths(
         output_dir=args.output_dir,
@@ -186,10 +254,11 @@ def train(args):
     )
     text_history_paths = resolve_text_history_paths(
         output_dir=args.output_dir,
-        existing_data_path=args.existing_data,
+        existing_data_path=args.train_existing_data or args.existing_data,
         stage="train",
         save_text_history=args.save_text_history,
         text_history_dir=args.text_history_dir,
+        dataset=args.dataset,
     )
     logger = setup_logging(artifact_paths["output_dir"], name="tg_mad_train")
     set_seeds(args.seed)
@@ -218,6 +287,7 @@ def train(args):
     # === Create engines ===
     logger.info("Creating engines...")
     debater_engine = create_debater_engine(
+        model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
     )
@@ -242,33 +312,24 @@ def train(args):
 
     # === Load data ===
     logger.info("Loading data...")
-    existing_data = load_existing_data(args.existing_data)
-    questions, answers = load_gsm8k_questions(args.data_dir, data_size=len(existing_data))
-    train_samples, test_samples, train_indices = select_train_test_split(
-        existing_data, questions, answers, train_size=args.train_size
-    )
+    train_samples, split_info = _load_training_samples(args)
     logger.info(
-        f"Training on {len(train_samples)} samples, "
-        f"test set has {len(test_samples)} samples"
+        "Training on %d samples using dataset=%s (%s)",
+        len(train_samples),
+        args.dataset,
+        split_info["split_strategy"],
     )
 
     # Save train/test split info
-    save_json(
-        {
-            "schema_version": ARTIFACT_SCHEMA_VERSION,
-            "train_indices": train_indices,
-            "num_test": len(test_samples),
-            "run_config": run_config,
-        },
-        artifact_paths["split_info"],
-    )
+    split_info["run_config"] = run_config
+    save_json(split_info, artifact_paths["split_info"])
 
     # === Create optimizable variable(s) and optimizer(s) ===
     if args.per_agent_prompts:
         logger.info("Per-agent prompt mode: creating %d independent prompts", args.n_agents)
         debater_prompts = [
             tg.Variable(
-                value=INITIAL_DEBATER_PROMPTS[i % len(INITIAL_DEBATER_PROMPTS)],
+                value=task_spec.per_agent_initial_prompts[i],
                 requires_grad=True,
                 role_description=f"system prompt for debate agent {i + 1}",
             )
@@ -278,7 +339,7 @@ def train(args):
             tg.TGD(
                 parameters=[p],
                 engine=evaluator_engine,
-                constraints=OPTIMIZER_CONSTRAINTS_PER_AGENT,
+                constraints=task_spec.per_agent_constraints,
             )
             for p in debater_prompts
         ]
@@ -295,17 +356,17 @@ def train(args):
         ]
     else:
         debater_prompt = tg.Variable(
-            value=INITIAL_DEBATER_PROMPT,
+            value=task_spec.shared_initial_prompt,
             requires_grad=True,
             role_description=(
-                "shared system prompt for all 3 debater agents in a "
-                "multi-agent debate on math problems"
+                f"shared system prompt for all {args.n_agents} debater agents "
+                f"in a multi-agent {args.dataset} debate"
             ),
         )
         optimizer = tg.TGD(
             parameters=[debater_prompt],
             engine=evaluator_engine,
-            constraints=OPTIMIZER_CONSTRAINTS,
+            constraints=task_spec.shared_constraints,
         )
         prompt_history = [
             {
@@ -359,6 +420,7 @@ def train(args):
                         debater_engine=debater_engine,
                         n_agents=args.n_agents,
                         n_rounds=args.n_rounds,
+                        dataset=args.dataset,
                         allow_failed_generations=args.allow_failed_generations,
                     )
 
@@ -367,7 +429,7 @@ def train(args):
                     gt = sample["ground_truth"]
                     logger.info(
                         f"    t0_parsed={result['t0_parsed']}, "
-                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt) else 'wrong'})"
+                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt, dataset=args.dataset) else 'wrong'})"
                     )
                     logger.info(
                         f"    final_MV={final_mv} ({'correct' if result['final_correct'] else 'wrong'})"
@@ -387,6 +449,7 @@ def train(args):
                         t0_majority=result["t0_majority_vote"],
                         evaluator_engine=evaluator_engine,
                         n_agents=args.n_agents,
+                        dataset=args.dataset,
                     )
                     agent_feedbacks = evaluate_fn(transcript_text)
 
@@ -469,6 +532,7 @@ def train(args):
                         debater_engine=debater_engine,
                         n_agents=args.n_agents,
                         n_rounds=args.n_rounds,
+                        dataset=args.dataset,
                         allow_failed_generations=args.allow_failed_generations,
                     )
 
@@ -477,7 +541,7 @@ def train(args):
                     gt = sample["ground_truth"]
                     logger.info(
                         f"    t0_parsed={result['t0_parsed']}, "
-                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt) else 'wrong'})"
+                        f"t0_MV={t0_mv} ({'correct' if answer_is_correct(t0_mv, gt, dataset=args.dataset) else 'wrong'})"
                     )
                     logger.info(
                         f"    final_MV={final_mv} ({'correct' if result['final_correct'] else 'wrong'})"
@@ -490,6 +554,7 @@ def train(args):
                         t0_parsed=result["t0_parsed"],
                         t0_majority=result["t0_majority_vote"],
                         evaluator_engine=evaluator_engine,
+                        dataset=args.dataset,
                     )
                     loss = loss_fn(result["transcript_var"])
                     losses.append(loss)

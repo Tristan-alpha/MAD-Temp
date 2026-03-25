@@ -18,7 +18,10 @@ REPO_ROOT="${REPO_ROOT:-/export/home3/dazhou/debate-or-vote}"
 cd "${REPO_ROOT}"
 
 # Default TG-MAD experiments to per-agent prompt optimization with debate text
-# history saved. These remain overridable by the caller.
+# history saved. Dataset/model/history selection should be provided via env vars
+# such as DATASET, TRAIN_EXISTING_DATA, EVAL_EXISTING_DATA, and DEBATER_MODEL_NAME.
+# These remain overridable by the caller.
+export DATASET="${DATASET:-hh_rlhf}"
 export PER_AGENT_PROMPTS="${PER_AGENT_PROMPTS:-1}"
 export SAVE_TEXT_HISTORY="${SAVE_TEXT_HISTORY:-1}"
 

@@ -9,15 +9,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from tg_mad.config import DEBATER_BASE_URL, EXISTING_DATA_PATH, MAX_NEW_TOKENS, N_AGENTS, N_ROUNDS, OUTPUT_DIR
-from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
 from tg_mad.engine import create_debater_engine
-from tg_mad.evaluate import compute_baselines, evaluate_tgmad, resolve_prompt_checkpoint
+from tg_mad.evaluate import (
+    _load_eval_samples,
+    compute_baselines,
+    evaluate_tgmad,
+    resolve_prompt_checkpoint,
+)
+from tg_mad.data_loader import load_split_info
 from tg_mad.utils import save_json, set_seeds, setup_logging
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="TG-MAD checkpoint-sweep evaluation")
     parser.add_argument("--debater_base_url", type=str, default=None)
+    parser.add_argument("--debater_model", type=str, default=None)
     parser.add_argument("--prompt_history", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=OUTPUT_DIR)
     parser.add_argument("--results_file", type=str, default=None)
@@ -25,7 +31,10 @@ def parse_args():
     parser.add_argument("--plot_file", type=str, default=None)
     parser.add_argument("--split_info_file", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="./datasets")
+    parser.add_argument("--dataset", type=str, default="hh_rlhf")
     parser.add_argument("--existing_data", type=str, default=EXISTING_DATA_PATH)
+    parser.add_argument("--train_existing_data", type=str, default=None)
+    parser.add_argument("--eval_existing_data", type=str, default=None)
     parser.add_argument(
         "--save_text_history",
         action="store_true",
@@ -109,26 +118,8 @@ def _resolve_paths(args):
 
 
 def _load_test_samples(args, split_info_path):
-    existing_data = load_existing_data(args.existing_data)
-    questions, answers = load_gsm8k_questions(args.data_dir, data_size=len(existing_data))
-
-    if os.path.exists(split_info_path):
-        with open(split_info_path, "r") as f:
-            split_info = json.load(f)
-        train_indices_set = set(split_info["train_indices"])
-        test_samples = []
-        for i in range(len(existing_data)):
-            if i not in train_indices_set:
-                test_samples.append(
-                    {
-                        "question": questions[i],
-                        "ground_truth": answers[i],
-                        "existing_data": existing_data[i],
-                        "index": i,
-                    }
-                )
-    else:
-        _, test_samples, _ = select_train_test_split(existing_data, questions, answers)
+    split_info = load_split_info(split_info_path)
+    test_samples = _load_eval_samples(args, split_info)
 
     if args.max_test_samples is not None:
         if args.max_test_samples < 1:
@@ -173,6 +164,7 @@ def evaluate_sweep(args):
             "plot_file": paths["plot_file"],
             "split_info_file": paths["split_info_file"],
             "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
+            "debater_model": args.debater_model,
             "n_agents": args.n_agents,
             "n_rounds": args.n_rounds,
             "max_new_tokens": args.max_new_tokens,
@@ -181,7 +173,10 @@ def evaluate_sweep(args):
             "checkpoint_stride": args.checkpoint_stride,
             "checkpoint_indices": args.checkpoint_indices,
             "data_dir": args.data_dir,
+            "dataset": args.dataset,
             "existing_data": args.existing_data,
+            "train_existing_data": args.train_existing_data,
+            "eval_existing_data": args.eval_existing_data,
             "allow_failed_generations": args.allow_failed_generations,
         },
         paths["run_config_file"],
@@ -203,7 +198,11 @@ def evaluate_sweep(args):
     test_samples = _load_test_samples(args, paths["split_info_file"])
     logger.info("Evaluating %d held-out samples per checkpoint", len(test_samples))
 
-    baseline_results = compute_baselines(test_samples, n_rounds=args.n_rounds)
+    baseline_results = compute_baselines(
+        test_samples,
+        dataset=args.dataset,
+        n_rounds=args.n_rounds,
+    )
     logger.info(
         "Baselines: single_agent=%.2f%% mv=%.2f%% standard_mad=%.2f%%",
         100 * baseline_results["single_agent_accuracy"],
@@ -212,6 +211,7 @@ def evaluate_sweep(args):
     )
 
     debater_engine = create_debater_engine(
+        model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
     )
@@ -232,6 +232,7 @@ def evaluate_sweep(args):
             debater_engine,
             n_agents=args.n_agents,
             n_rounds=args.n_rounds,
+            dataset=args.dataset,
             logger=logger,
             allow_failed_generations=args.allow_failed_generations,
             text_history_file=None,

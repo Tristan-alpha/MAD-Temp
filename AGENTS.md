@@ -41,6 +41,8 @@ Configure experiments by exporting env vars before `sbatch`; do not add new wrap
 - `TRAIN_N_AGENTS` / `EVAL_N_AGENTS`
 - `TRAIN_N_ROUNDS` / `EVAL_N_ROUNDS`
 
+Current default experiment dataset in this repo is `hh_rlhf` unless a command or exported env var explicitly overrides it.
+
 ## job_runner.py Notes
 - `python -m tg_mad.job_runner train|eval --dry-run` is the fastest way to inspect the exact launch plan.
 - `job_runner.py` handles local vLLM server startup, health checks, port conflicts, GPU preflight checks, and CLI/env plumbing for train/eval.

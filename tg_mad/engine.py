@@ -7,7 +7,7 @@ servers and remote API providers (e.g. kimi-k2.5).
 """
 
 import os
-from typing import Union, List
+from typing import Dict, Union, List
 
 import diskcache as dc
 from litellm import completion
@@ -73,7 +73,7 @@ class VLLMEngine(EngineLM):
         max_tokens=None,
         top_p=None,
     ):
-        sys_prompt = system_prompt or self.system_prompt
+        sys_prompt = self.system_prompt if system_prompt is None else system_prompt
         temp = temperature if temperature is not None else self.temperature
         tokens = max_tokens if max_tokens is not None else self.max_tokens
         nucleus = top_p if top_p is not None else self.top_p
@@ -83,6 +83,33 @@ class VLLMEngine(EngineLM):
             {"role": "user", "content": content},
         ]
 
+        response = completion(
+            model=self.model_string,
+            messages=messages,
+            api_base=self.base_url,
+            api_key=self.api_key,
+            temperature=temp,
+            max_tokens=tokens,
+            top_p=nucleus,
+        )
+        return response["choices"][0]["message"]["content"]
+
+    @retry(
+        retry=retry_if_exception(_should_retry),
+        wait=wait_random_exponential(min=1, max=5),
+        stop=stop_after_attempt(5),
+    )
+    def generate_messages(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+    ) -> str:
+        temp = temperature if temperature is not None else self.temperature
+        tokens = max_tokens if max_tokens is not None else self.max_tokens
+        nucleus = top_p if top_p is not None else self.top_p
         response = completion(
             model=self.model_string,
             messages=messages,
@@ -123,7 +150,7 @@ def create_debater_engine(
     temperature: float = None,
     max_tokens: int = None,
 ) -> VLLMEngine:
-    """Factory for the debater engine (Qwen3-4B)."""
+    """Factory for the debater engine."""
     from tg_mad.config import DEBATER_MODEL, DEBATER_BASE_URL, TEMPERATURE
 
     return VLLMEngine(

@@ -12,29 +12,21 @@ from typing import List, Optional, Any, Dict
 import numpy as np
 import torch
 
-from tg_mad.config import ANSWER_REGEX
+from tg_mad.task_spec import answer_is_correct as task_answer_is_correct
+from tg_mad.task_spec import parse_prediction
 
 
-def parse_answer(response: str) -> Optional[float]:
-    """Extract numeric answer from response using {final answer: X} format.
-
-    Mirrors src/evaluator.py evaluate_arithmetics (lines 49-53).
-    """
-    try:
-        pred = re.findall(ANSWER_REGEX, response)[-1]
-        pred = float(pred.replace("final answer:", "").strip())
-        return np.round(pred, 1)
-    except (IndexError, ValueError):
-        return None
+def parse_answer(response: str, dataset: str = "gsm8k") -> Optional[Any]:
+    """Extract a final answer using the legacy task parser for ``dataset``."""
+    return parse_prediction(response, dataset)
 
 
-def majority_vote(answers: List[Optional[float]]) -> Optional[float]:
+def majority_vote(answers: List[Optional[Any]]) -> Optional[Any]:
     """Compute majority vote from parsed answers.
 
-    Handles ties by random choice. Returns None if all answers are None.
-    Mirrors src/evaluator.py evaluate_arithmetics (lines 61-64).
+    Handles ties by random choice. Returns None if all answers are empty.
     """
-    valid = [a for a in answers if a is not None]
+    valid = [a for a in answers if a not in (None, "")]
     if not valid:
         return None
     counter = collections.Counter(valid)
@@ -43,14 +35,9 @@ def majority_vote(answers: List[Optional[float]]) -> Optional[float]:
     return random.choice(most_common)
 
 
-def answer_is_correct(predicted: Optional[float], ground_truth) -> bool:
-    """Compare predicted answer to ground truth with tolerance."""
-    if predicted is None:
-        return False
-    try:
-        return abs(float(predicted) - float(np.round(ground_truth, 1))) < 0.01
-    except (ValueError, TypeError):
-        return False
+def answer_is_correct(predicted: Optional[Any], ground_truth, dataset: str = "gsm8k") -> bool:
+    """Compare predicted answer to ground truth for the selected dataset."""
+    return task_answer_is_correct(predicted, ground_truth, dataset)
 
 
 def set_seeds(seed: int):
@@ -104,10 +91,11 @@ def infer_dataset_name(existing_data_path: str) -> str:
 
 def resolve_text_history_paths(
     output_dir: str,
-    existing_data_path: str,
+    existing_data_path: Optional[str],
     stage: str,
     save_text_history: bool = False,
     text_history_dir: Optional[str] = None,
+    dataset: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
     """Resolve optional text-history paths for TG-MAD train/eval runs."""
     if not save_text_history:
@@ -123,7 +111,8 @@ def resolve_text_history_paths(
 
     abs_output_dir = os.path.abspath(output_dir)
     run_name = os.path.basename(os.path.normpath(abs_output_dir))
-    dataset = infer_dataset_name(existing_data_path)
+    if dataset is None:
+        dataset = infer_dataset_name(existing_data_path or "")
 
     if text_history_dir is None:
         resolved_dir = os.path.join("out", "history", dataset, "tg_mad_text", run_name)

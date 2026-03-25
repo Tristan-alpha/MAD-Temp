@@ -9,12 +9,18 @@ Supports both shared-prompt mode (single Variable) and per-agent mode
 """
 
 import logging
-from typing import List, Optional, Union
+from typing import List, Union
 
 import textgrad as tg
 
-from tg_mad.config import N_AGENTS, N_ROUNDS, ANSWER_SUFFIX
+from tg_mad.config import N_AGENTS, N_ROUNDS
+from tg_mad.task_spec import get_task_spec
 from tg_mad.utils import parse_answer, majority_vote, answer_is_correct
+
+try:
+    from src.legacy_debate import build_debate_round_messages
+except ImportError:
+    from legacy_debate import build_debate_round_messages
 
 logger = logging.getLogger("tg_mad")
 
@@ -45,31 +51,6 @@ def _handle_generation_error(
     )
 
 
-def format_debate_context(
-    question: str,
-    prev_responses: List[str],
-    own_response: str,
-    agent_idx: int,
-    answer_suffix: str = ANSWER_SUFFIX,
-) -> str:
-    """Format debate context for rounds t>=1.
-
-    Similar to src/main.py get_new_message() (lines 81-98).
-    Each agent sees all OTHER agents' previous responses + their own.
-    """
-    msg = "These are the recent opinions from other agents: "
-    for i, resp in enumerate(prev_responses):
-        if i != agent_idx:
-            msg += f"\n\nOne of the agents' response: \n{resp}\n"
-    msg += f"\n\nThis was your most recent opinion:\n{own_response}\n"
-    msg += (
-        f"\n\nUse these opinions carefully as additional advice to revise "
-        f"your recent opinion to give your final answer to the question:\n{question}"
-    )
-    msg += answer_suffix
-    return msg
-
-
 def mad_forward_pass(
     question: str,
     ground_truth,
@@ -77,7 +58,7 @@ def mad_forward_pass(
     debater_engine,
     n_agents: int = N_AGENTS,
     n_rounds: int = N_ROUNDS,
-    answer_suffix: str = ANSWER_SUFFIX,
+    dataset: str = "gsm8k",
     allow_failed_generations: bool = False,
 ) -> dict:
     """Run a full multi-agent debate using TextGrad's BlackboxLLM.
@@ -95,7 +76,10 @@ def mad_forward_pass(
         per_agent_response_vars (list[list[tg.Variable]], per-agent mode only),
         transcript_var (tg.sum of all responses, shared mode only; None in per-agent mode)
     """
+    task = get_task_spec(dataset, n_agents=n_agents)
+    answer_suffix = task.answer_suffix
     per_agent_mode = isinstance(debater_prompt, list)
+    agent_names = [f"Agent {i + 1}" for i in range(n_agents)]
 
     if per_agent_mode:
         assert len(debater_prompt) == n_agents, (
@@ -122,13 +106,13 @@ def mad_forward_pass(
         q_var = tg.Variable(
             question + answer_suffix,
             requires_grad=False,
-            role_description=f"math problem for agent {i+1} at round 0",
+            role_description=f"{dataset} problem for agent {i+1} at round 0",
         )
         try:
             resp_var = debater_models[i](q_var)
             t0_responses.append(resp_var.value)
             t0_vars.append(resp_var)
-            t0_parsed.append(parse_answer(resp_var.value))
+            t0_parsed.append(parse_answer(resp_var.value, dataset=dataset))
         except Exception as e:
             resp_var = _handle_generation_error(
                 agent_idx=i,
@@ -150,7 +134,9 @@ def mad_forward_pass(
         "answers": t0_responses,
         "parsed": t0_parsed,
         "majority_vote": t0_majority,
-        "individual_correct": [answer_is_correct(a, ground_truth) for a in t0_parsed],
+        "individual_correct": [
+            answer_is_correct(a, ground_truth, dataset=dataset) for a in t0_parsed
+        ],
     }
 
     # === Rounds t=1..T: Debate ===
@@ -160,21 +146,25 @@ def mad_forward_pass(
         round_responses = []
         round_parsed = []
         round_vars = []
+        round_messages = build_debate_round_messages(
+            question,
+            dict(zip(agent_names, prev_responses)),
+            agent_names=agent_names,
+            suffix=answer_suffix,
+        )
 
         for i in range(n_agents):
-            context_str = format_debate_context(
-                question, prev_responses, prev_responses[i], i, answer_suffix
-            )
+            context_str = round_messages[agent_names[i]]["content"]
             context_var = tg.Variable(
                 context_str,
                 requires_grad=False,
-                role_description=f"debate context for agent {i+1} at round {t}",
+                role_description=f"{dataset} debate context for agent {i+1} at round {t}",
             )
             try:
                 resp_var = debater_models[i](context_var)
                 round_responses.append(resp_var.value)
                 round_vars.append(resp_var)
-                round_parsed.append(parse_answer(resp_var.value))
+                round_parsed.append(parse_answer(resp_var.value, dataset=dataset))
             except Exception as e:
                 resp_var = _handle_generation_error(
                     agent_idx=i,
@@ -197,7 +187,7 @@ def mad_forward_pass(
             "parsed": round_parsed,
             "majority_vote": round_majority,
             "individual_correct": [
-                answer_is_correct(a, ground_truth) for a in round_parsed
+                answer_is_correct(a, ground_truth, dataset=dataset) for a in round_parsed
             ],
         }
 
@@ -217,7 +207,7 @@ def mad_forward_pass(
         "t0_majority_vote": t0_majority,
         "rounds": rounds_data,
         "final_majority_vote": final_majority,
-        "final_correct": answer_is_correct(final_majority, ground_truth),
+        "final_correct": answer_is_correct(final_majority, ground_truth, dataset=dataset),
         "all_response_vars": all_response_vars,
         "per_agent_response_vars": per_agent_response_vars,
         "transcript_var": transcript_var,

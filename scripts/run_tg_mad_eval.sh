@@ -24,8 +24,10 @@ if [[ "${TG_MAD_PRESERVE_DEBATER_MIN_FREE_MIB:-0}" != "1" ]]; then
 	unset DEBATER_MIN_FREE_MIB
 fi
 
-# Default TG-MAD evaluations to saving debate text history. This remains
-# overridable by the caller.
+# Default TG-MAD evaluations to saving debate text history. Dataset/model/history
+# selection should be provided via env vars such as DATASET, EVAL_EXISTING_DATA,
+# PROMPT_HISTORY_PATH, and DEBATER_MODEL_NAME. This remains overridable by the caller.
+export DATASET="${DATASET:-hh_rlhf}"
 export SAVE_TEXT_HISTORY="${SAVE_TEXT_HISTORY:-1}"
 
 exec python -m tg_mad.job_runner eval "$@"

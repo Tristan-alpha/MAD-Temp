@@ -25,8 +25,15 @@ from tg_mad.config import (
     TEMPERATURE,
 )
 from tg_mad.engine import create_debater_engine
-from tg_mad.data_loader import load_existing_data, load_gsm8k_questions, select_train_test_split
+from tg_mad.data_loader import (
+    build_samples_from_history,
+    load_existing_data,
+    load_gsm8k_questions,
+    load_split_info,
+    select_train_test_split,
+)
 from tg_mad.forward_pass import mad_forward_pass
+from tg_mad.task_spec import normalize_stored_answer
 from tg_mad.utils import (
     append_jsonl_record,
     majority_vote,
@@ -46,6 +53,7 @@ from tg_mad.utils import (
 def parse_args():
     parser = argparse.ArgumentParser(description="TG-MAD Evaluation")
     parser.add_argument("--debater_base_url", type=str, default=None)
+    parser.add_argument("--debater_model", type=str, default=None)
     parser.add_argument("--prompt_history", type=str, default=None)
     parser.add_argument(
         "--prompt_index",
@@ -61,7 +69,10 @@ def parse_args():
     parser.add_argument("--split_info_file", type=str, default=None)
     parser.add_argument("--run_config_file", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="./datasets")
+    parser.add_argument("--dataset", type=str, default="hh_rlhf")
     parser.add_argument("--existing_data", type=str, default=EXISTING_DATA_PATH)
+    parser.add_argument("--train_existing_data", type=str, default=None)
+    parser.add_argument("--eval_existing_data", type=str, default=None)
     parser.add_argument(
         "--save_text_history",
         action="store_true",
@@ -104,6 +115,7 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "text_history_dir": text_history_paths["text_history_dir"],
         "text_history_file": text_history_paths["text_history_file"],
         "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
+        "debater_model": args.debater_model,
         "debater_temperature": TEMPERATURE,
         "evaluator_temperature": EVALUATOR_TEMPERATURE,
         "n_agents": args.n_agents,
@@ -112,7 +124,10 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "seed": args.seed,
         "max_test_samples": args.max_test_samples,
         "data_dir": args.data_dir,
+        "dataset": args.dataset,
         "existing_data": args.existing_data,
+        "train_existing_data": args.train_existing_data,
+        "eval_existing_data": args.eval_existing_data,
         "allow_failed_generations": args.allow_failed_generations,
     }
 
@@ -138,18 +153,14 @@ def build_eval_text_history_record(
     sample,
     result,
     n_rounds: int,
+    dataset: str,
     prompt_reference,
 ):
     existing = sample["existing_data"]
     gt = sample["ground_truth"]
     t0_answers = existing["0"].get("final_answers", [])
-    t0_parsed = []
-    for answer in t0_answers:
-        if answer == "" or answer is None:
-            t0_parsed.append(None)
-        else:
-            t0_parsed.append(float(answer))
-    t0_majority_vote = majority_vote(t0_parsed)
+    t0_parsed = [normalize_stored_answer(answer, dataset) for answer in t0_answers]
+    t0_majority_vote = normalize_stored_answer(existing["0"].get("debate_answer"), dataset)
     final_round_key = str(n_rounds)
     standard_mad_final = existing.get(final_round_key, {})
 
@@ -173,7 +184,7 @@ def build_eval_text_history_record(
             "t0_answers": t0_answers,
             "t0_parsed": t0_parsed,
             "t0_majority_vote": t0_majority_vote,
-            "t0_majority_correct": answer_is_correct(t0_majority_vote, gt),
+            "t0_majority_correct": answer_is_correct(t0_majority_vote, gt, dataset=dataset),
             "standard_mad_round": n_rounds,
             "standard_mad_final_answer": standard_mad_final.get("debate_answer"),
             "standard_mad_final_correct": standard_mad_final.get("debate_answer_iscorr", False),
@@ -181,10 +192,56 @@ def build_eval_text_history_record(
     }
 
 
+def _load_eval_samples(args, split_info):
+    if split_info is not None and split_info.get("dataset") not in (None, args.dataset):
+        raise ValueError(
+            f"Dataset mismatch: split info was created for {split_info.get('dataset')} "
+            f"but evaluation requested {args.dataset}"
+        )
+
+    if args.dataset == "gsm8k" and args.eval_existing_data is None:
+        existing_data = load_existing_data(args.existing_data)
+        questions, answers = load_gsm8k_questions(args.data_dir, data_size=len(existing_data))
+
+        if split_info is not None and "train_indices" in split_info:
+            train_indices_set = set(split_info["train_indices"])
+            test_samples = []
+            for i in range(len(existing_data)):
+                if i not in train_indices_set:
+                    test_samples.append(
+                        {
+                            "question": questions[i],
+                            "ground_truth": answers[i],
+                            "existing_data": existing_data[i],
+                            "index": i,
+                        }
+                    )
+        else:
+            _, test_samples, _ = select_train_test_split(existing_data, questions, answers)
+        return test_samples
+
+    eval_history_path = args.eval_existing_data
+    if eval_history_path is None and split_info is not None:
+        eval_history_path = split_info.get("eval_existing_data")
+    if eval_history_path is None:
+        raise ValueError(
+            f"{args.dataset} evaluation requires --eval_existing_data "
+            "or split_info.json with eval_existing_data."
+        )
+
+    return build_samples_from_history(
+        dataset=args.dataset,
+        history_path=eval_history_path,
+        data_dir=args.data_dir,
+        pool="eval",
+        seed=args.seed,
+    )
+
+
 # ─── Baseline metrics from existing JSONL ───────────────────────────────────
 
 
-def compute_baselines(test_samples, n_rounds=N_ROUNDS):
+def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
     """Compute single-agent, MV, and standard MAD accuracy from existing JSONL data."""
     single_agent_correct = 0
     mv_correct = 0
@@ -207,19 +264,13 @@ def compute_baselines(test_samples, n_rounds=N_ROUNDS):
 
         # === Single Agent (Agent 1 at t=0) ===
         t0_answers = existing["0"]["final_answers"]
-        agent1_answer = t0_answers[0] if t0_answers else None
-        if answer_is_correct(agent1_answer, gt):
+        agent1_answer = normalize_stored_answer(t0_answers[0] if t0_answers else None, dataset)
+        if answer_is_correct(agent1_answer, gt, dataset=dataset):
             single_agent_correct += 1
 
         # === MV at t=0 ===
-        t0_parsed = []
-        for a in t0_answers:
-            if a == "" or a is None:
-                t0_parsed.append(None)
-            else:
-                t0_parsed.append(float(a))
-        mv = majority_vote(t0_parsed)
-        mv_is_correct = answer_is_correct(mv, gt)
+        mv = normalize_stored_answer(existing["0"].get("debate_answer"), dataset)
+        mv_is_correct = answer_is_correct(mv, gt, dataset=dataset)
         if mv_is_correct:
             mv_correct += 1
 
@@ -276,6 +327,7 @@ def evaluate_tgmad(
     debater_engine,
     n_agents=N_AGENTS,
     n_rounds=N_ROUNDS,
+    dataset: str = "gsm8k",
     logger=None,
     allow_failed_generations: bool = False,
     text_history_file: str = None,
@@ -327,6 +379,7 @@ def evaluate_tgmad(
             debater_engine=debater_engine,
             n_agents=n_agents,
             n_rounds=n_rounds,
+            dataset=dataset,
             allow_failed_generations=allow_failed_generations,
         )
 
@@ -336,15 +389,8 @@ def evaluate_tgmad(
 
         # MV baseline from existing data for correction/subversion
         existing = sample["existing_data"]
-        t0_answers = existing["0"]["final_answers"]
-        t0_parsed = []
-        for a in t0_answers:
-            if a == "" or a is None:
-                t0_parsed.append(None)
-            else:
-                t0_parsed.append(float(a))
-        mv = majority_vote(t0_parsed)
-        mv_is_correct = answer_is_correct(mv, gt)
+        mv = normalize_stored_answer(existing["0"].get("debate_answer"), dataset)
+        mv_is_correct = answer_is_correct(mv, gt, dataset=dataset)
 
         # Correction/subversion relative to frozen MV baseline
         if mv_is_correct and not result["final_correct"]:
@@ -371,6 +417,7 @@ def evaluate_tgmad(
                     sample=sample,
                     result=result,
                     n_rounds=n_rounds,
+                    dataset=dataset,
                     prompt_reference=prompt_reference,
                 ),
             )
@@ -511,10 +558,11 @@ def evaluate(args):
     )
     text_history_paths = resolve_text_history_paths(
         output_dir=args.output_dir,
-        existing_data_path=args.existing_data,
+        existing_data_path=args.eval_existing_data or args.existing_data,
         stage="eval",
         save_text_history=args.save_text_history,
         text_history_dir=args.text_history_dir,
+        dataset=args.dataset,
     )
     prompt_history_path = artifact_paths["prompt_history"]
     eval_config = build_eval_config(args, artifact_paths, prompt_history_path, text_history_paths)
@@ -577,30 +625,9 @@ def evaluate(args):
 
     # Load data
     logger.info("Loading data...")
-    existing_data = load_existing_data(args.existing_data)
-    questions, answers = load_gsm8k_questions(args.data_dir, data_size=len(existing_data))
-
-    # Load split info to use the same train/test split
     split_info_path = artifact_paths["split_info"]
-    if os.path.exists(split_info_path):
-        with open(split_info_path, "r") as f:
-            split_info = json.load(f)
-        train_indices_set = set(split_info["train_indices"])
-        test_samples = []
-        for i in range(len(existing_data)):
-            if i not in train_indices_set:
-                test_samples.append(
-                    {
-                        "question": questions[i],
-                        "ground_truth": answers[i],
-                        "existing_data": existing_data[i],
-                        "index": i,
-                    }
-                )
-    else:
-        _, test_samples, _ = select_train_test_split(
-            existing_data, questions, answers
-        )
+    split_info = load_split_info(split_info_path)
+    test_samples = _load_eval_samples(args, split_info)
 
     if args.max_test_samples is not None:
         original_test_count = len(test_samples)
@@ -615,7 +642,11 @@ def evaluate(args):
 
     # === Compute baselines from existing JSONL ===
     logger.info("Computing baselines from existing JSONL...")
-    baseline_results = compute_baselines(test_samples, n_rounds=args.n_rounds)
+    baseline_results = compute_baselines(
+        test_samples,
+        dataset=args.dataset,
+        n_rounds=args.n_rounds,
+    )
     logger.info(f"  Single Agent accuracy: {baseline_results['single_agent_accuracy']:.2%}")
     logger.info(f"  MV accuracy: {baseline_results['mv_accuracy']:.2%}")
     logger.info(f"  Standard MAD accuracy: {baseline_results['standard_mad_accuracy']:.2%}")
@@ -623,6 +654,7 @@ def evaluate(args):
     # === Evaluate TG-MAD ===
     logger.info("Evaluating TG-MAD with optimized prompt...")
     debater_engine = create_debater_engine(
+        model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
     )
@@ -632,6 +664,7 @@ def evaluate(args):
         debater_engine,
         n_agents=args.n_agents,
         n_rounds=args.n_rounds,
+        dataset=args.dataset,
         logger=logger,
         allow_failed_generations=args.allow_failed_generations,
         text_history_file=text_history_paths["text_history_file"],

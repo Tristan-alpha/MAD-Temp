@@ -1,12 +1,4 @@
-"""TextLoss evaluator for TG-MAD.
-
-Creates per-sample TextLoss functions that embed ground truth and t=0 context
-in the evaluator system prompt. The evaluator LLM generates textual gradients
-targeting the debater_prompt Variable.
-
-Also provides a per-agent evaluator that returns structured, routed feedback
-for independent per-agent prompt optimization.
-"""
+"""TextLoss evaluator templates for TG-MAD."""
 
 import logging
 import re
@@ -19,34 +11,65 @@ from tg_mad.config import N_AGENTS
 logger = logging.getLogger("tg_mad")
 
 
-def create_evaluator_loss(
-    ground_truth,
-    t0_parsed: List[Optional[float]],
-    t0_majority: Optional[float],
-    evaluator_engine,
-) -> tg.TextLoss:
-    """Create a TextLoss that evaluates the debate transcript against ground truth.
-
-    The evaluator prompt is constructed per-sample with ground truth and t=0
-    answers baked in. It instructs the evaluator to generate feedback on the
-    debater SYSTEM PROMPT (not the responses themselves).
-
-    Generates gradients for BOTH correct and incorrect outcomes:
-    - Incorrect: harsh critique about echo chamber / martingale stagnation
-    - Correct: positive feedback reinforcing good debate behaviors
-
-    The eval_system_prompt has requires_grad=False, so gradients flow only
-    through transcript_var → response_vars → debater_prompt.
-
-    Label leakage note: ground truth is used ONLY during training for gradient
-    computation, never at inference/evaluation time.
-    """
+def _format_initial_answers(t0_parsed: List[Optional[object]]) -> str:
     t0_strs = [str(a) if a is not None else "FAILED" for a in t0_parsed]
-    agent_lines = "\n".join(
-        f"Agent {idx + 1}: {answer}" for idx, answer in enumerate(t0_strs)
-    )
+    return "\n".join(f"Agent {idx + 1}: {answer}" for idx, answer in enumerate(t0_strs))
 
-    evaluator_prompt = f"""You are evaluating a multi-agent math debate system. Your job is to generate feedback on the SYSTEM PROMPT used by the debater agents, so it can be improved.
+
+def _shared_template(dataset: str, ground_truth, agent_lines: str, t0_majority) -> str:
+    if dataset == "formal_logic":
+        return f"""You are evaluating a multi-agent formal-logic debate system. Your job is to generate feedback on the SYSTEM PROMPT used by the debater agents so it can be improved.
+
+GROUND TRUTH ANSWER: {ground_truth}
+
+INDEPENDENT ANSWERS AT t=0 (before debate):
+{agent_lines}
+Majority Vote at t=0: {t0_majority}
+
+You will receive the full debate transcript. Analyze it and provide feedback on the debater system prompt.
+
+YOUR ANALYSIS MUST CHECK FOR:
+
+1. LOGICAL VALIDITY: Did the agents reason correctly about quantifiers, conditionals, negation, contradiction, or symbolic structure? If the debate endorsed an invalid inference, critique the prompt for failing to demand rigorous logical justification.
+
+2. MAJORITY BIAS: Did a correct minority agent get dragged into a wrong answer just because other agents agreed? If so, harshly critique the prompt and insist that agents require explicit logical proof before conceding.
+
+3. ERROR DETECTION: Did the debate miss a false premise, illicit conversion, scope mistake, or other formal reasoning error? Explain what kind of checking the system prompt should strengthen.
+
+4. SUCCESSFUL CORRECTION OR DEFENSE: If the debate corrected a wrong majority or preserved a correct minority through sound logical analysis, generate positive feedback that reinforces those behaviors.
+
+5. FORMAT PRESERVATION: The debater prompt must continue to require the final answer format '{{final answer: (X)}}'. Mention this if the debate drifted away from clean answer selection.
+
+Be specific. Reference exact moments in the transcript. Your feedback will be used to update the system prompt via gradient descent."""
+
+    if dataset == "hh_rlhf":
+        return f"""You are evaluating a multi-agent helpfulness-and-harmlessness preference debate system. Your job is to generate feedback on the SYSTEM PROMPT used by the debater agents so it can be improved.
+
+GROUND TRUTH ANSWER: {ground_truth}
+
+INDEPENDENT ANSWERS AT t=0 (before debate):
+{agent_lines}
+Majority Vote at t=0: {t0_majority}
+
+You will receive the full debate transcript. Analyze it and provide feedback on the debater system prompt.
+
+YOUR ANALYSIS MUST CHECK FOR:
+
+1. PREFERENCE TARGET: Did the agents correctly identify which option is more helpful and/or harmless? If they focused on irrelevant stylistic details instead of safety/helpfulness, critique the prompt.
+
+2. HARMFUL SUBVERSION: Did the debate end up preferring a more harmful option, or excuse clearly unsafe behavior? If so, generate a harsh critique and explain how the prompt should better prioritize harmlessness.
+
+3. HELPFULNESS FAILURE: Did the debate prefer an obviously unhelpful or evasive answer over a better one? Critique the prompt for weak preference reasoning.
+
+4. MAJORITY BIAS: Did a correct minority agent get pulled toward a worse preference judgment just because the majority repeated it? If so, critique the prompt for not demanding evidence-based comparison.
+
+5. SUCCESSFUL CORRECTION OR DEFENSE: If the debate corrected an initially bad preference or a correct agent successfully defended the safer/more helpful answer, generate positive feedback that reinforces those behaviors.
+
+6. FORMAT PRESERVATION: The debater prompt must continue to require the final answer format '{{final answer: (X)}}'. Mention this if the debate drifted away from clear answer selection.
+
+Be specific. Reference exact moments in the transcript. Your feedback will be used to update the system prompt via gradient descent."""
+
+    return f"""You are evaluating a multi-agent math debate system. Your job is to generate feedback on the SYSTEM PROMPT used by the debater agents, so it can be improved.
 
 GROUND TRUTH ANSWER: {ground_truth}
 
@@ -68,19 +91,86 @@ YOUR ANALYSIS MUST CHECK FOR:
 
 Be specific. Reference exact moments in the transcript. Your feedback will be used to update the system prompt via gradient descent."""
 
+
+def _per_agent_template(
+    dataset: str,
+    ground_truth,
+    agent_lines: str,
+    t0_majority,
+    n_agents: int,
+) -> str:
+    markers = "\n".join(
+        f"[AGENT_{i+1}_FEEDBACK]\n<feedback for Agent {i+1}'s system prompt>\n"
+        for i in range(n_agents)
+    )
+
+    if dataset == "formal_logic":
+        body = """Analyze the debate transcript below. For EACH agent, evaluate:
+
+1. LOGICAL DISCIPLINE: Did this agent reason soundly about formal structure, or did they miss invalid inferences, scope mistakes, or false premises?
+
+2. MAJORITY BIAS: Did this agent abandon a correct answer under peer pressure without a valid logical argument? If so, critique their prompt sharply.
+
+3. COMPLEMENTARITY: Did this agent bring a distinct checking strategy, or merely duplicate the others?
+
+4. POSITIVE PATTERNS: Did this agent successfully defend or correct an answer through careful logical reasoning? Reinforce those behaviors.
+
+5. FORMAT PRESERVATION: Their prompt must still preserve the final answer format '{final answer: (X)}'."""
+    elif dataset == "hh_rlhf":
+        body = """Analyze the debate transcript below. For EACH agent, evaluate:
+
+1. PREFERENCE REASONING: Did this agent compare helpfulness and harmlessness correctly, or did they focus on the wrong cues?
+
+2. HARMFUL OR UNHELPFUL SELECTION: Did this agent argue for a more harmful or clearly less helpful answer? If so, critique their prompt sharply.
+
+3. COMPLEMENTARITY: Did this agent add a distinct safety/helpfulness lens, or duplicate the others?
+
+4. POSITIVE PATTERNS: Did this agent successfully defend the safer or more helpful answer, or persuade others with strong comparison reasoning? Reinforce those behaviors.
+
+5. FORMAT PRESERVATION: Their prompt must still preserve the final answer format '{final answer: (X)}'."""
+    else:
+        body = """Analyze the debate transcript below. For EACH agent, evaluate:
+
+1. ECHO CHAMBER: Did this agent change a correct answer to an incorrect one under peer pressure? If so, harshly critique — their prompt must forbid conceding without mathematical proof.
+
+2. STAGNATION: Did this agent just repeat their position without engaging? Critique their prompt for failing to encourage productive reasoning.
+
+3. COMPLEMENTARITY: Did this agent's approach complement or duplicate the others? Suggest how their prompt should differentiate their role.
+
+4. POSITIVE PATTERNS: Did this agent successfully defend a correct answer or convince others through rigorous reasoning? Reinforce these behaviors."""
+
+    return f"""You are evaluating a multi-agent debate. Each agent has its OWN independent system prompt that will be optimized separately. Your job is to provide SEPARATE feedback for each agent's system prompt.
+
+GROUND TRUTH ANSWER: {ground_truth}
+
+INDEPENDENT ANSWERS AT t=0 (before debate):
+{agent_lines}
+Majority Vote at t=0: {t0_majority}
+
+{body}
+
+You MUST structure your output with these exact markers:
+
+{markers}
+Be specific. Reference exact moments in the transcript."""
+
+
+def create_evaluator_loss(
+    ground_truth,
+    t0_parsed: List[Optional[object]],
+    t0_majority: Optional[object],
+    evaluator_engine,
+    dataset: str = "gsm8k",
+) -> tg.TextLoss:
+    agent_lines = _format_initial_answers(t0_parsed)
+    evaluator_prompt = _shared_template(dataset, ground_truth, agent_lines, t0_majority)
     return tg.TextLoss(evaluator_prompt, engine=evaluator_engine)
 
 
 def _parse_per_agent_feedback(raw: str, n_agents: int) -> List[str]:
-    """Parse evaluator output into per-agent feedback sections.
-
-    Expects sections delimited by ``[AGENT_N_FEEDBACK]`` markers.
-    Falls back to duplicating the full text if parsing fails.
-    """
     pattern = r"\[AGENT_(\d+)_FEEDBACK\]"
     splits = re.split(pattern, raw)
 
-    # splits should be: [preamble, "1", text1, "2", text2, "3", text3, ...]
     feedbacks: dict[int, str] = {}
     for i in range(1, len(splits) - 1, 2):
         try:
@@ -92,10 +182,8 @@ def _parse_per_agent_feedback(raw: str, n_agents: int) -> List[str]:
     if all((i + 1) in feedbacks for i in range(n_agents)):
         return [feedbacks[i + 1] for i in range(n_agents)]
 
-    # Fallback: duplicate full feedback to all agents
     logger.warning(
-        "Could not parse %d agent sections (found %d). "
-        "Duplicating full feedback to all agents.",
+        "Could not parse %d agent sections (found %d). Duplicating full feedback to all agents.",
         n_agents,
         len(feedbacks),
     )
@@ -104,51 +192,20 @@ def _parse_per_agent_feedback(raw: str, n_agents: int) -> List[str]:
 
 def create_per_agent_evaluator(
     ground_truth,
-    t0_parsed: List[Optional[float]],
-    t0_majority: Optional[float],
+    t0_parsed: List[Optional[object]],
+    t0_majority: Optional[object],
     evaluator_engine,
     n_agents: int = N_AGENTS,
+    dataset: str = "gsm8k",
 ) -> Callable[[str], List[str]]:
-    """Create a callable that routes evaluator feedback to individual agents.
-
-    Unlike ``create_evaluator_loss`` (which returns a ``tg.TextLoss`` for
-    automatic backward), this returns a plain function that:
-    1. Takes a debate transcript string.
-    2. Calls the evaluator LLM once with a prompt requesting per-agent feedback.
-    3. Returns ``list[str]`` — one feedback string per agent.
-
-    The caller is responsible for injecting these as gradients.
-    """
-    t0_strs = [str(a) if a is not None else "FAILED" for a in t0_parsed]
-    agent_lines = "\n".join(
-        f"Agent {idx + 1}: {answer}" for idx, answer in enumerate(t0_strs)
+    agent_lines = _format_initial_answers(t0_parsed)
+    system_prompt = _per_agent_template(
+        dataset,
+        ground_truth,
+        agent_lines,
+        t0_majority,
+        n_agents,
     )
-
-    system_prompt = f"""You are evaluating a multi-agent math debate. Each agent has its OWN independent system prompt that will be optimized separately. Your job is to provide SEPARATE feedback for each agent's system prompt.
-
-GROUND TRUTH ANSWER: {ground_truth}
-
-INDEPENDENT ANSWERS AT t=0 (before debate):
-{agent_lines}
-Majority Vote at t=0: {t0_majority}
-
-Analyze the debate transcript below. For EACH agent, evaluate:
-
-1. ECHO CHAMBER: Did this agent change a correct answer to an incorrect one under peer pressure? If so, harshly critique — their prompt must forbid conceding without mathematical proof.
-
-2. STAGNATION: Did this agent just repeat their position without engaging? Critique their prompt for failing to encourage productive reasoning.
-
-3. COMPLEMENTARITY: Did this agent's approach complement or duplicate the others? Suggest how their prompt should differentiate their role.
-
-4. POSITIVE PATTERNS: Did this agent successfully defend a correct answer or convince others through rigorous reasoning? Reinforce these behaviors.
-
-You MUST structure your output with these exact markers:
-
-{chr(10).join(
-    f"[AGENT_{i+1}_FEEDBACK]{chr(10)}<feedback for Agent {i+1}'s system prompt>{chr(10)}"
-    for i in range(n_agents)
-)}
-Be specific. Reference exact moments in the transcript."""
 
     def evaluate_transcript(transcript_text: str) -> List[str]:
         raw = evaluator_engine.generate(transcript_text, system_prompt=system_prompt)

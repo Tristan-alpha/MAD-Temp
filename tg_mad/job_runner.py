@@ -577,6 +577,10 @@ def run_train(dry_run: bool) -> None:
     )
 
     job_visible_devices = env_optional("CUDA_VISIBLE_DEVICES")
+    debater_model_name = env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507")
+    debater_engine_model = env_optional("DEBATER_ENGINE_MODEL") or (
+        f"hosted_vllm/{debater_model_name}"
+    )
     evaluator_model_name = env_str("EVALUATOR_MODEL_NAME", "Qwen/Qwen3-8B")
     evaluator_engine_model = env_optional("EVALUATOR_ENGINE_MODEL") or (
         f"hosted_vllm/{evaluator_model_name}"
@@ -681,7 +685,7 @@ def run_train(dry_run: bool) -> None:
                 visible_devices=debater_visible,
                 host=host,
                 port=debater_port,
-                model_name=env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
+                model_name=debater_model_name,
                 gpu_memory_utilization=env_float("DEBATER_GPU_MEMORY", 0.45),
                 max_num_seqs=env_int("DEBATER_MAX_NUM_SEQS", 4),
                 tensor_parallel_size=debater_tp,
@@ -764,6 +768,8 @@ def run_train(dry_run: bool) -> None:
             "tg_mad.train",
             "--debater_base_url",
             debater_url,
+            "--debater_model",
+            debater_engine_model,
             "--batch_size",
             str(env_int("TRAIN_BATCH_SIZE", 2)),
             "--num_epochs",
@@ -782,6 +788,8 @@ def run_train(dry_run: bool) -> None:
             str(env_int("TRAIN_SEED", 42)),
             "--output_dir",
             str(output_dir),
+            "--dataset",
+            env_str("DATASET", "hh_rlhf"),
         ]
 
         if evaluator_type == "api":
@@ -825,6 +833,16 @@ def run_train(dry_run: bool) -> None:
         append_optional_arg(train_cmd, "--existing_data", env_optional("EXISTING_DATA"))
         append_optional_arg(
             train_cmd,
+            "--train_existing_data",
+            env_optional("TRAIN_EXISTING_DATA"),
+        )
+        append_optional_arg(
+            train_cmd,
+            "--eval_existing_data",
+            env_optional("EVAL_EXISTING_DATA"),
+        )
+        append_optional_arg(
+            train_cmd,
             "--prompt_history_file",
             env_optional("PROMPT_HISTORY_FILE"),
         )
@@ -860,6 +878,10 @@ def run_eval(dry_run: bool) -> None:
     host = env_str("SERVER_HOST", "127.0.0.1")
     debater_port = env_int("DEBATER_PORT", 8000)
     start_debater = env_bool("START_DEBATER_SERVER", True)
+    debater_model_name = env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507")
+    debater_engine_model = env_optional("DEBATER_ENGINE_MODEL") or (
+        f"hosted_vllm/{debater_model_name}"
+    )
 
     job_visible_devices = env_optional("CUDA_VISIBLE_DEVICES")
     if env_bool("DEBATER_AUTO_PICK_GPU", False):
@@ -909,7 +931,7 @@ def run_eval(dry_run: bool) -> None:
                 visible_devices=debater_visible,
                 host=host,
                 port=debater_port,
-                model_name=env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
+                model_name=debater_model_name,
                 gpu_memory_utilization=env_float("DEBATER_GPU_MEMORY", 0.45),
                 max_num_seqs=env_int("DEBATER_MAX_NUM_SEQS", 4),
                 tensor_parallel_size=env_int("DEBATER_TENSOR_PARALLEL_SIZE", 1),
@@ -954,6 +976,8 @@ def run_eval(dry_run: bool) -> None:
             eval_module,
             "--debater_base_url",
             debater_url,
+            "--debater_model",
+            debater_engine_model,
             "--prompt_history",
             env_str("PROMPT_HISTORY_PATH", str(output_dir / "prompt_history.json")),
             "--output_dir",
@@ -966,6 +990,8 @@ def run_eval(dry_run: bool) -> None:
             str(env_int("MAX_NEW_TOKENS", 512)),
             "--seed",
             str(env_int("EVAL_SEED", 42)),
+            "--dataset",
+            env_str("DATASET", "hh_rlhf"),
         ]
 
         append_flag(eval_cmd, "--save_text_history", env_bool("SAVE_TEXT_HISTORY", False))
@@ -985,6 +1011,16 @@ def run_eval(dry_run: bool) -> None:
         )
         append_optional_arg(eval_cmd, "--data_dir", env_optional("DATA_DIR"))
         append_optional_arg(eval_cmd, "--existing_data", env_optional("EXISTING_DATA"))
+        append_optional_arg(
+            eval_cmd,
+            "--train_existing_data",
+            env_optional("TRAIN_EXISTING_DATA"),
+        )
+        append_optional_arg(
+            eval_cmd,
+            "--eval_existing_data",
+            env_optional("EVAL_EXISTING_DATA"),
+        )
         if eval_module == "tg_mad.evaluate":
             append_optional_arg(eval_cmd, "--prompt_index", env_optional("EVAL_PROMPT_INDEX"))
         else:
