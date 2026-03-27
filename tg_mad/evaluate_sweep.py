@@ -135,7 +135,12 @@ def _plot_sweep(summary, plot_path):
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(x, y, marker="o", linewidth=2, label="TG-MAD")
-    ax.axhline(summary["single_agent_accuracy"], linestyle="--", linewidth=1.5, label="Single Agent")
+    ax.axhline(
+        summary["single_agent_accuracy"],
+        linestyle="--",
+        linewidth=1.5,
+        label="Single Agent (t0 mean)",
+    )
     ax.axhline(summary["mv_accuracy"], linestyle="--", linewidth=1.5, label="Majority Vote")
     ax.axhline(summary["standard_mad_accuracy"], linestyle="--", linewidth=1.5, label="Standard MAD")
     ax.set_xlabel("Prompt history index")
@@ -204,8 +209,9 @@ def evaluate_sweep(args):
         n_rounds=args.n_rounds,
     )
     logger.info(
-        "Baselines: single_agent=%.2f%% mv=%.2f%% standard_mad=%.2f%%",
+        "Baselines: single_agent_t0_mean=%.2f%% single_agent_agent1_legacy=%.2f%% mv=%.2f%% standard_mad=%.2f%%",
         100 * baseline_results["single_agent_accuracy"],
+        100 * baseline_results["single_agent_accuracy_agent1"],
         100 * baseline_results["mv_accuracy"],
         100 * baseline_results["standard_mad_accuracy"],
     )
@@ -264,6 +270,7 @@ def evaluate_sweep(args):
         "split_info_file": paths["split_info_file"],
         "num_test_samples": len(test_samples),
         "single_agent_accuracy": baseline_results["single_agent_accuracy"],
+        "single_agent_accuracy_agent1": baseline_results["single_agent_accuracy_agent1"],
         "mv_accuracy": baseline_results["mv_accuracy"],
         "standard_mad_accuracy": baseline_results["standard_mad_accuracy"],
         "checkpoint_stride": args.checkpoint_stride,
@@ -275,6 +282,11 @@ def evaluate_sweep(args):
 
     best = max(checkpoint_results, key=lambda item: item["tgmad_accuracy"])
     print("Checkpoint sweep complete")
+    print(f"  Baseline Single Agent (t0 mean): {summary['single_agent_accuracy']:.2%}")
+    print(
+        "  Baseline Single Agent (Agent 1 legacy): "
+        f"{summary['single_agent_accuracy_agent1']:.2%}"
+    )
     print(f"  Baseline MV accuracy: {summary['mv_accuracy']:.2%}")
     print(f"  Baseline Standard MAD accuracy: {summary['standard_mad_accuracy']:.2%}")
     print(

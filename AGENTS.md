@@ -24,6 +24,7 @@ Build and evaluate TextGrad-based optimization for multi-agent debate. The core 
 - Put saved debate/text histories under `out/history/`.
 - Use a fresh `output_dir` for materially different runs.
 - Keep JSON/JSONL schemas additive so older analysis still works.
+- After completing experiments, write a unified comparison JSON to `out/<dataset>_all_methods_comparison.json` containing accuracy for every method (single agent, MV, standard MAD, ICL-MAD, TG-MAD, etc.), round-by-round metrics, and correction/subversion rates. This is the canonical file for the user to examine results across methods.
 
 ## Canonical TG-MAD Entrypoints
 - Training: [scripts/run_tg_mad_train.sh](/export/home3/dazhou/debate-or-vote/scripts/run_tg_mad_train.sh)

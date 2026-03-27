@@ -251,8 +251,15 @@ def _load_eval_samples(args, split_info):
 
 
 def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
-    """Compute single-agent, MV, and standard MAD accuracy from existing JSONL data."""
-    single_agent_correct = 0
+    """Compute baseline metrics from existing JSONL data.
+
+    Default single-agent accuracy is the mean round-0 agent correctness across all
+    agents (sum of correct t=0 answers divided by total t=0 answers). The legacy
+    Agent-1-at-t0 metric is still returned as an additive field.
+    """
+    single_agent_agent1_correct = 0
+    single_agent_t0_all_correct = 0
+    single_agent_t0_all_total = 0
     mv_correct = 0
     mad_correct = 0
     total = len(test_samples)
@@ -271,11 +278,18 @@ def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
         existing = sample["existing_data"]
         gt = sample["ground_truth"]
 
-        # === Single Agent (Agent 1 at t=0) ===
-        t0_answers = existing["0"]["final_answers"]
+        # === Single Agent default: all agents at t=0 ===
+        t0_answers = existing["0"].get("final_answers", [])
+        for raw_answer in t0_answers:
+            parsed_answer = normalize_stored_answer(raw_answer, dataset)
+            single_agent_t0_all_total += 1
+            if answer_is_correct(parsed_answer, gt, dataset=dataset):
+                single_agent_t0_all_correct += 1
+
+        # === Legacy Single Agent (Agent 1 at t=0) ===
         agent1_answer = normalize_stored_answer(t0_answers[0] if t0_answers else None, dataset)
         if answer_is_correct(agent1_answer, gt, dataset=dataset):
-            single_agent_correct += 1
+            single_agent_agent1_correct += 1
 
         # === MV at t=0 ===
         mv = normalize_stored_answer(existing["0"].get("debate_answer"), dataset)
@@ -310,7 +324,14 @@ def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
             maintained_wrong += 1
 
     results = {
-        "single_agent_accuracy": single_agent_correct / total if total else 0,
+        "single_agent_accuracy": (
+            single_agent_t0_all_correct / single_agent_t0_all_total
+            if single_agent_t0_all_total
+            else 0
+        ),
+        "single_agent_accuracy_agent1": (
+            single_agent_agent1_correct / total if total else 0
+        ),
         "mv_accuracy": mv_correct / total if total else 0,
         "standard_mad_accuracy": mad_correct / total if total else 0,
         "standard_mad_round_by_round": {
@@ -603,7 +624,7 @@ def generate_plots(eval_results, output_dir=OUTPUT_DIR):
 
     # 3. Overall accuracy bar chart
     fig, ax = plt.subplots(figsize=(8 if has_icl else 7, 5))
-    methods = ["Single\nAgent", "Majority\nVoting", "Standard\nMAD"]
+    methods = ["Single\nAgent\n(t0 mean)", "Majority\nVoting", "Standard\nMAD"]
     accs = [
         eval_results["single_agent_accuracy"],
         eval_results["mv_accuracy"],
@@ -751,7 +772,14 @@ def evaluate(args):
         dataset=args.dataset,
         n_rounds=args.n_rounds,
     )
-    logger.info(f"  Single Agent accuracy: {baseline_results['single_agent_accuracy']:.2%}")
+    logger.info(
+        "  Single Agent accuracy (t=0 mean over all agents): %.2f%%",
+        100 * baseline_results["single_agent_accuracy"],
+    )
+    logger.info(
+        "  Single Agent accuracy (Agent 1 at t=0, legacy): %.2f%%",
+        100 * baseline_results["single_agent_accuracy_agent1"],
+    )
     logger.info(f"  MV accuracy: {baseline_results['mv_accuracy']:.2%}")
     logger.info(f"  Standard MAD accuracy: {baseline_results['standard_mad_accuracy']:.2%}")
 
@@ -800,6 +828,7 @@ def evaluate(args):
     # === Assemble final results ===
     eval_results = {
         "single_agent_accuracy": baseline_results["single_agent_accuracy"],
+        "single_agent_accuracy_agent1": baseline_results["single_agent_accuracy_agent1"],
         "mv_accuracy": baseline_results["mv_accuracy"],
         "standard_mad_accuracy": baseline_results["standard_mad_accuracy"],
         "tgmad_accuracy": tgmad_results["tgmad_accuracy"],
@@ -857,7 +886,15 @@ def evaluate(args):
     print("\n" + "=" * 60)
     print("TG-MAD EVALUATION SUMMARY")
     print("=" * 60)
-    print(f"  Single Agent:  {eval_results['single_agent_accuracy']:.2%}")
+    print(
+        "  Single Agent (t0 mean over all agents): "
+        f"{eval_results['single_agent_accuracy']:.2%}"
+    )
+    if "single_agent_accuracy_agent1" in eval_results:
+        print(
+            "  Single Agent (Agent 1 legacy):      "
+            f"{eval_results['single_agent_accuracy_agent1']:.2%}"
+        )
     print(f"  Majority Vote: {eval_results['mv_accuracy']:.2%}")
     print(f"  Standard MAD:  {eval_results['standard_mad_accuracy']:.2%}")
     if has_icl:
