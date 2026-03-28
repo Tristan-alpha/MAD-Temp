@@ -18,6 +18,28 @@ cd "${REPO_ROOT}"
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
 DRY_RUN="${DRY_RUN:-0}"
+EXPERIMENT_PROFILE="${EXPERIMENT_PROFILE:-}"
+
+apply_experiment_profile_defaults() {
+    if [[ -z "${EXPERIMENT_PROFILE}" ]]; then
+        return
+    fi
+    while IFS='=' read -r key value; do
+        [[ -z "${key}" ]] && continue
+        if [[ -z "${!key:-}" ]]; then
+            export "${key}=${value}"
+        fi
+    done < <("${PYTHON_BIN}" - "${EXPERIMENT_PROFILE}" <<'PY'
+from tg_mad.experiment_profiles import get_stage_env_defaults
+import sys
+
+for key, value in get_stage_env_defaults(sys.argv[1], "baseline").items():
+    print(f"{key}={value}")
+PY
+)
+}
+
+apply_experiment_profile_defaults
 
 # Keep defaults aligned with the locked baseline setup as closely as possible.
 SERVER_HOST="${SERVER_HOST:-127.0.0.1}"
@@ -30,9 +52,11 @@ DEBATER_GPU_MEMORY="${DEBATER_GPU_MEMORY:-0.45}"
 DEBATER_MIN_FREE_MIB="${DEBATER_MIN_FREE_MIB:-18000}"
 DEBATER_MAX_NUM_SEQS="${DEBATER_MAX_NUM_SEQS:-1}"
 DEBATER_MAX_MODEL_LEN="${DEBATER_MAX_MODEL_LEN:-16384}"
+DEBATER_DTYPE="${DEBATER_DTYPE:-bfloat16}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-600}"
 
 DATA_DIR="${DATA_DIR:-./datasets}"
+DATASET="${DATASET:-formal_logic}"
 N_AGENTS="${N_AGENTS:-5}"
 N_ROUNDS="${N_ROUNDS:-2}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-2048}"
@@ -83,13 +107,23 @@ if not torch.cuda.is_available():
     raise SystemExit("CUDA is unavailable in this baseline job.")
 
 rows = []
-for index in range(torch.cuda.device_count()):
-    with torch.cuda.device(index):
-        free_bytes, total_bytes = torch.cuda.mem_get_info()
+device_count = torch.cuda.device_count()
+if device_count == 1:
+    # In a single-GPU SLURM allocation, trust the assigned device and let the
+    # server startup perform the real readiness check.
+    print("0 0 0")
+    raise SystemExit(0)
+
+for index in range(device_count):
+    try:
+        with torch.cuda.device(index):
+            free_bytes, total_bytes = torch.cuda.mem_get_info()
+    except Exception:
+        continue
     rows.append((index, free_bytes // (1024 * 1024), total_bytes // (1024 * 1024)))
 
 if not rows:
-    raise SystemExit("No visible GPUs available for baseline generation.")
+    raise SystemExit("No probeable visible GPUs available for baseline generation.")
 
 rows.sort(key=lambda row: (row[1], row[2], -row[0]), reverse=True)
 best = rows[0]
@@ -192,7 +226,7 @@ start_debater_server() {
         --download-dir ./models
         --gpu-memory-utilization "${DEBATER_GPU_MEMORY}"
         --max-num-seqs "${DEBATER_MAX_NUM_SEQS}"
-        --dtype bfloat16
+        --dtype "${DEBATER_DTYPE}"
         --tensor-parallel-size 1
         --generation-config vllm
         --max-model-len "${DEBATER_MAX_MODEL_LEN}"
@@ -219,7 +253,7 @@ start_debater_server
 
 COMMON_ARGS=(
     -m tg_mad.generate_history
-    --dataset formal_logic
+    --dataset "${DATASET}"
     --debater_base_url "${DEBATER_BASE_URL}"
     --debater_model "${DEBATER_MODEL}"
     --data_dir "${DATA_DIR}"
@@ -228,6 +262,10 @@ COMMON_ARGS=(
     --max_new_tokens "${MAX_NEW_TOKENS}"
     --seed "${SEED}"
 )
+
+if [[ -n "${EXPERIMENT_PROFILE}" ]]; then
+    COMMON_ARGS+=(--experiment_profile "${EXPERIMENT_PROFILE}")
+fi
 
 if [[ "${ALLOW_FAILED_GENERATIONS}" == "1" ]]; then
     COMMON_ARGS+=(--allow_failed_generations)

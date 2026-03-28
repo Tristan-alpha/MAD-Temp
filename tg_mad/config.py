@@ -53,9 +53,6 @@ OPTIMIZER_CONSTRAINTS = [
     "The prompt must not exceed 500 words.",
 ]
 
-# === Per-Agent Prompt Optimization ===
-PER_AGENT_PROMPTS = False  # default off for backward compat
-
 # Three different seed prompts for symmetry breaking — each nudges a different
 # debate behaviour so TextGrad can differentiate the agents from step 0.
 INITIAL_DEBATER_PROMPTS = [

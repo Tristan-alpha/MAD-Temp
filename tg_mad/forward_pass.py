@@ -1,15 +1,7 @@
-"""MAD forward pass using TextGrad computation graph.
-
-Each agent call goes through tg.BlackboxLLM so that the debater_prompt
-Variable is registered as a predecessor, enabling gradient flow via
-loss.backward().
-
-Supports both shared-prompt mode (single Variable) and per-agent mode
-(list of Variables) controlled by the type of debater_prompt passed in.
-"""
+"""MAD forward pass using TextGrad computation graph in per-agent mode."""
 
 import logging
-from typing import List, Union
+from typing import List
 
 import textgrad as tg
 
@@ -54,44 +46,30 @@ def _handle_generation_error(
 def mad_forward_pass(
     question: str,
     ground_truth,
-    debater_prompt: Union[tg.Variable, List[tg.Variable]],
+    debater_prompt: List[tg.Variable],
     debater_engine,
     n_agents: int = N_AGENTS,
     n_rounds: int = N_ROUNDS,
     dataset: str = "gsm8k",
     allow_failed_generations: bool = False,
 ) -> dict:
-    """Run a full multi-agent debate using TextGrad's BlackboxLLM.
-
-    Args:
-        debater_prompt: Either a single tg.Variable (shared mode) or a list
-            of tg.Variables (per-agent mode, one per agent).
-
-    Returns dict with:
-        question, ground_truth,
-        t0_answers (raw), t0_parsed, t0_majority_vote,
-        rounds (per-round data),
-        final_majority_vote, final_correct,
-        all_response_vars (flat list of tg.Variable),
-        per_agent_response_vars (list[list[tg.Variable]], per-agent mode only),
-        transcript_var (tg.sum of all responses, shared mode only; None in per-agent mode)
-    """
+    """Run a full multi-agent debate using one prompt variable per agent."""
     task = get_task_spec(dataset, n_agents=n_agents)
     answer_suffix = task.answer_suffix
-    per_agent_mode = isinstance(debater_prompt, list)
     agent_names = [f"Agent {i + 1}" for i in range(n_agents)]
 
-    if per_agent_mode:
-        assert len(debater_prompt) == n_agents, (
-            f"Expected {n_agents} per-agent prompts, got {len(debater_prompt)}"
+    if not isinstance(debater_prompt, list):
+        raise TypeError(
+            "TG-MAD now requires per-agent prompt mode. "
+            "Expected a list of prompt Variables, one per agent."
         )
-        debater_models = [
-            tg.BlackboxLLM(debater_engine, system_prompt=p)
-            for p in debater_prompt
-        ]
-    else:
-        shared_model = tg.BlackboxLLM(debater_engine, system_prompt=debater_prompt)
-        debater_models = [shared_model] * n_agents
+    assert len(debater_prompt) == n_agents, (
+        f"Expected {n_agents} per-agent prompts, got {len(debater_prompt)}"
+    )
+    debater_models = [
+        tg.BlackboxLLM(debater_engine, system_prompt=p)
+        for p in debater_prompt
+    ]
 
     all_response_vars = []
     # per_agent_response_vars[i] collects all response vars for agent i
@@ -195,9 +173,7 @@ def mad_forward_pass(
 
     final_majority = majority_vote(rounds_data[n_rounds]["parsed"])
 
-    # In shared mode, build tg.sum transcript for TextLoss backward.
-    # In per-agent mode, skip tg.sum — caller handles gradient injection.
-    transcript_var = None if per_agent_mode else tg.sum(all_response_vars)
+    transcript_var = None
 
     return {
         "question": question,

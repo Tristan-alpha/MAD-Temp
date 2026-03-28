@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import time
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -26,6 +27,11 @@ from tg_mad.config import (
     TEMPERATURE,
 )
 from tg_mad.engine import create_debater_engine
+from tg_mad.experiment_profiles import (
+    apply_argparse_profile_defaults,
+    build_profile_metadata,
+    build_runtime_tgmad_deviations,
+)
 from tg_mad.data_loader import (
     build_samples_from_history,
     load_existing_data,
@@ -52,11 +58,18 @@ from tg_mad.utils import (
 )
 
 
+def _display_model_name(model_name):
+    if model_name is None:
+        return None
+    return model_name.removeprefix("hosted_vllm/")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="TG-MAD Evaluation")
     parser.add_argument("--debater_base_url", type=str, default=None)
     parser.add_argument("--debater_model", type=str, default=None)
     parser.add_argument("--prompt_history", type=str, default=None)
+    parser.add_argument("--experiment_profile", type=str, default=None)
     parser.add_argument(
         "--prompt_index",
         type=int,
@@ -77,8 +90,16 @@ def parse_args():
     parser.add_argument("--eval_existing_data", type=str, default=None)
     parser.add_argument(
         "--save_text_history",
+        dest="save_text_history",
         action="store_true",
+        default=True,
         help="Save per-sample debate text to JSONL files under out/history.",
+    )
+    parser.add_argument(
+        "--no_save_text_history",
+        dest="save_text_history",
+        action="store_false",
+        help="Disable per-sample debate text history saving.",
     )
     parser.add_argument(
         "--text_history_dir",
@@ -107,12 +128,21 @@ def parse_args():
         default=None,
         help="Path to ICL-MAD eval-pool JSONL for side-by-side comparison.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    apply_argparse_profile_defaults(args, parser, stage="eval")
+    return args
 
 
-def build_eval_config(args, artifact_paths, prompt_history_path, text_history_paths):
+def build_eval_config(
+    args,
+    artifact_paths,
+    prompt_history_path,
+    text_history_paths,
+    resolved_existing_data,
+):
     return {
         "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "experiment_profile": args.experiment_profile,
         "output_dir": artifact_paths["output_dir"],
         "prompt_history_file": prompt_history_path,
         "prompt_index": args.prompt_index,
@@ -133,12 +163,19 @@ def build_eval_config(args, artifact_paths, prompt_history_path, text_history_pa
         "max_test_samples": args.max_test_samples,
         "data_dir": args.data_dir,
         "dataset": args.dataset,
-        "existing_data": args.existing_data,
+        "existing_data": resolved_existing_data,
         "train_existing_data": args.train_existing_data,
         "eval_existing_data": args.eval_existing_data,
         "allow_failed_generations": args.allow_failed_generations,
         "icl_existing_data": getattr(args, "icl_existing_data", None),
     }
+
+
+def _resolve_eval_history_path(args, split_info):
+    eval_history_path = args.eval_existing_data
+    if eval_history_path is None and split_info is not None:
+        eval_history_path = split_info.get("eval_existing_data")
+    return eval_history_path or args.existing_data
 
 
 def resolve_prompt_checkpoint(prompt_history, prompt_index):
@@ -155,6 +192,16 @@ def resolve_prompt_checkpoint(prompt_history, prompt_index):
             f"with {len(prompt_history)} entries."
         )
     return resolved_index, prompt_history[resolved_index]
+
+
+def require_per_agent_prompt_entry(prompt_entry, *, prompt_history_file: str, prompt_index: int):
+    """Return per-agent prompts from a checkpoint entry or raise a clear error."""
+    if "prompts" not in prompt_entry:
+        raise ValueError(
+            "Shared prompt histories are no longer supported. "
+            f"Checkpoint {prompt_index} in {prompt_history_file} does not contain per-agent prompts."
+        )
+    return prompt_entry["prompts"]
 
 
 def build_eval_text_history_record(
@@ -229,9 +276,7 @@ def _load_eval_samples(args, split_info):
             _, test_samples, _ = select_train_test_split(existing_data, questions, answers)
         return test_samples
 
-    eval_history_path = args.eval_existing_data
-    if eval_history_path is None and split_info is not None:
-        eval_history_path = split_info.get("eval_existing_data")
+    eval_history_path = _resolve_eval_history_path(args, split_info)
     if eval_history_path is None:
         raise ValueError(
             f"{args.dataset} evaluation requires --eval_existing_data "
@@ -436,28 +481,19 @@ def evaluate_tgmad(
 ):
     """Run debates on test set with optimized prompt and compute metrics.
 
-    ``optimized_prompt`` can be a single string (shared mode) or a list of
-    strings (per-agent mode).
+    ``optimized_prompt`` must be a list of per-agent system prompts.
     """
     if logger is None:
         logger = logging.getLogger("tg_mad_eval")
 
-    # Non-gradient Variable(s) for evaluation
-    if isinstance(optimized_prompt, list):
-        prompt_var = [
-            tg.Variable(
-                value=p,
-                requires_grad=False,
-                role_description=f"optimized system prompt for agent {i+1} (evaluation)",
-            )
-            for i, p in enumerate(optimized_prompt)
-        ]
-    else:
-        prompt_var = tg.Variable(
-            value=optimized_prompt,
+    prompt_var = [
+        tg.Variable(
+            value=p,
             requires_grad=False,
-            role_description="optimized system prompt for debater agents (evaluation)",
+            role_description=f"optimized system prompt for agent {i+1} (evaluation)",
         )
+        for i, p in enumerate(optimized_prompt)
+    ]
 
     total = len(test_samples)
     tgmad_correct = 0
@@ -681,16 +717,80 @@ def evaluate(args):
             else os.path.join(args.output_dir, "evaluation_run_config.json")
         ),
     )
+    split_info_path = artifact_paths["split_info"]
+    split_info = load_split_info(split_info_path)
+    resolved_eval_history_path = _resolve_eval_history_path(args, split_info)
     text_history_paths = resolve_text_history_paths(
         output_dir=args.output_dir,
-        existing_data_path=args.eval_existing_data or args.existing_data,
+        existing_data_path=resolved_eval_history_path,
         stage="eval",
         save_text_history=args.save_text_history,
         text_history_dir=args.text_history_dir,
         dataset=args.dataset,
     )
     prompt_history_path = artifact_paths["prompt_history"]
-    eval_config = build_eval_config(args, artifact_paths, prompt_history_path, text_history_paths)
+    eval_config = build_eval_config(
+        args,
+        artifact_paths,
+        prompt_history_path,
+        text_history_paths,
+        resolved_eval_history_path,
+    )
+
+    logger = setup_logging(artifact_paths["output_dir"], name="tg_mad_eval")
+    set_seeds(args.seed)
+
+    # Load selected per-agent prompt checkpoint
+    logger.info(f"Loading prompt history from {prompt_history_path}")
+    with open(prompt_history_path, "r") as f:
+        prompt_history = json.load(f)
+    selected_index, selected_entry = resolve_prompt_checkpoint(
+        prompt_history,
+        args.prompt_index,
+    )
+    first_entry = prompt_history[0]
+    optimized_prompt = require_per_agent_prompt_entry(
+        selected_entry,
+        prompt_history_file=prompt_history_path,
+        prompt_index=selected_index,
+    )
+    initial_prompt = require_per_agent_prompt_entry(
+        first_entry,
+        prompt_history_file=prompt_history_path,
+        prompt_index=0,
+    )
+    logger.info(
+        "Per-agent prompt mode detected (%d prompts) at history index %d",
+        len(optimized_prompt),
+        selected_index,
+    )
+    for i, p in enumerate(optimized_prompt):
+        logger.info(f"  Agent {i+1} prompt (first 120 chars): {p[:120]}...")
+    prompt_reference = {
+        "prompt_history_file": prompt_history_path,
+        "optimized_prompt_index": selected_index,
+        "optimized_prompt_epoch": selected_entry.get("epoch"),
+        "optimized_prompt_batch": selected_entry.get("batch"),
+    }
+    optimizer_model = _display_model_name(
+        (first_entry.get("run_config") or {}).get("evaluator_model")
+    )
+    eval_config.update(
+        build_profile_metadata(
+            args.experiment_profile,
+            include_tgmad_deviations=True,
+        )
+    )
+    eval_config["tgmad_prompt_mode"] = "per_agent_system_prompt"
+    eval_config["shared_prompt_mode"] = False
+    eval_config["tgmad_optimizer_model"] = optimizer_model
+    if "tgmad_deviations_from_paper" in eval_config:
+        eval_config["tgmad_deviations_from_paper"] = build_runtime_tgmad_deviations(
+            args.experiment_profile,
+            prompt_mode=eval_config["tgmad_prompt_mode"],
+            optimizer_model=optimizer_model,
+            max_new_tokens=args.max_new_tokens,
+        )
     if args.save_text_history:
         init_text_history_file(
             text_history_paths["text_history_file"],
@@ -706,52 +806,14 @@ def evaluate(args):
                 run_config=eval_config,
             ),
         )
-    save_json(eval_config, artifact_paths["run_config"])
-
-    logger = setup_logging(artifact_paths["output_dir"], name="tg_mad_eval")
-    set_seeds(args.seed)
-    if args.save_text_history:
         logger.info(
             "Saving eval text history to %s",
             text_history_paths["text_history_file"],
         )
-
-    # Load selected prompt(s) — supports both shared and per-agent formats
-    logger.info(f"Loading prompt history from {prompt_history_path}")
-    with open(prompt_history_path, "r") as f:
-        prompt_history = json.load(f)
-    selected_index, selected_entry = resolve_prompt_checkpoint(
-        prompt_history,
-        args.prompt_index,
-    )
-    first_entry = prompt_history[0]
-    per_agent_mode = "prompts" in selected_entry
-    if per_agent_mode:
-        optimized_prompt = selected_entry["prompts"]   # list[str]
-        initial_prompt = first_entry["prompts"]
-        logger.info(
-            "Per-agent prompt mode detected (%d prompts) at history index %d",
-            len(optimized_prompt),
-            selected_index,
-        )
-        for i, p in enumerate(optimized_prompt):
-            logger.info(f"  Agent {i+1} prompt (first 120 chars): {p[:120]}...")
-    else:
-        optimized_prompt = selected_entry["prompt"]    # str
-        initial_prompt = first_entry["prompt"]
-        logger.info("Evaluating prompt history index %d", selected_index)
-        logger.info(f"Optimized prompt (first 200 chars): {optimized_prompt[:200]}...")
-    prompt_reference = {
-        "prompt_history_file": prompt_history_path,
-        "optimized_prompt_index": selected_index,
-        "optimized_prompt_epoch": selected_entry.get("epoch"),
-        "optimized_prompt_batch": selected_entry.get("batch"),
-    }
+    save_json(eval_config, artifact_paths["run_config"])
 
     # Load data
     logger.info("Loading data...")
-    split_info_path = artifact_paths["split_info"]
-    split_info = load_split_info(split_info_path)
     test_samples = _load_eval_samples(args, split_info)
 
     if args.max_test_samples is not None:
@@ -810,6 +872,7 @@ def evaluate(args):
         model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
+        seed=args.seed,
     )
     tgmad_results = evaluate_tgmad(
         test_samples,
@@ -860,7 +923,23 @@ def evaluate(args):
         "optimized_prompt_index": selected_index,
         "optimized_prompt_epoch": selected_entry.get("epoch"),
         "optimized_prompt_batch": selected_entry.get("batch"),
+        "tgmad_prompt_mode": eval_config["tgmad_prompt_mode"],
+        "shared_prompt_mode": eval_config["shared_prompt_mode"],
+        "tgmad_optimizer_model": optimizer_model,
     }
+    eval_results.update(
+        build_profile_metadata(
+            args.experiment_profile,
+            include_tgmad_deviations=True,
+        )
+    )
+    if "tgmad_deviations_from_paper" in eval_results:
+        eval_results["tgmad_deviations_from_paper"] = build_runtime_tgmad_deviations(
+            args.experiment_profile,
+            prompt_mode=eval_config["tgmad_prompt_mode"],
+            optimizer_model=optimizer_model,
+            max_new_tokens=args.max_new_tokens,
+        )
 
     # Merge ICL-MAD results if available
     if icl_results is not None:
@@ -873,8 +952,16 @@ def evaluate(args):
         eval_results["icl_existing_data"] = args.icl_existing_data
 
     # Save results
+    canonical_comparison_path = (
+        Path(__file__).resolve().parents[1]
+        / "out"
+        / f"{args.dataset}_all_methods_comparison.json"
+    )
+    eval_results["canonical_comparison_file"] = str(canonical_comparison_path)
     save_json(eval_results, artifact_paths["eval_results"])
+    save_json(eval_results, str(canonical_comparison_path))
     logger.info(f"Results saved to {artifact_paths['eval_results']}")
+    logger.info("Canonical comparison saved to %s", canonical_comparison_path)
 
     # Generate plots
     logger.info("Generating plots...")

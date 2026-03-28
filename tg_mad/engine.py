@@ -38,6 +38,7 @@ class VLLMEngine(EngineLM):
         is_multimodal: bool = False,
         cache: Union[dc.Cache, bool] = False,
         api_key: str = None,
+        seed: int = None,
     ):
         """
         :param model_string: litellm model string, e.g. "hosted_vllm/Qwen/Qwen3-4B-Instruct-2507"
@@ -58,6 +59,20 @@ class VLLMEngine(EngineLM):
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "EMPTY")
+        self.seed = seed
+        self._request_counter = 0
+
+    def _next_request_seed(self):
+        if self.seed is None:
+            return None
+        request_seed = self.seed + self._request_counter
+        self._request_counter += 1
+        return request_seed
+
+    def _resolve_request_seed(self, explicit_seed=None):
+        if explicit_seed is not None:
+            return explicit_seed
+        return self._next_request_seed()
 
     @cached
     @retry(
@@ -72,6 +87,7 @@ class VLLMEngine(EngineLM):
         temperature=None,
         max_tokens=None,
         top_p=None,
+        seed=None,
     ):
         sys_prompt = self.system_prompt if system_prompt is None else system_prompt
         temp = temperature if temperature is not None else self.temperature
@@ -91,6 +107,7 @@ class VLLMEngine(EngineLM):
             temperature=temp,
             max_tokens=tokens,
             top_p=nucleus,
+            seed=seed,
         )
         return response["choices"][0]["message"]["content"]
 
@@ -106,6 +123,30 @@ class VLLMEngine(EngineLM):
         temperature=None,
         max_tokens=None,
         top_p=None,
+        seed=None,
+    ) -> str:
+        request_seed = self._resolve_request_seed(seed)
+        return self._generate_messages_with_seed(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            seed=request_seed,
+        )
+
+    @retry(
+        retry=retry_if_exception(_should_retry),
+        wait=wait_random_exponential(min=1, max=5),
+        stop=stop_after_attempt(5),
+    )
+    def _generate_messages_with_seed(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        seed=None,
     ) -> str:
         temp = temperature if temperature is not None else self.temperature
         tokens = max_tokens if max_tokens is not None else self.max_tokens
@@ -118,6 +159,7 @@ class VLLMEngine(EngineLM):
             temperature=temp,
             max_tokens=tokens,
             top_p=nucleus,
+            seed=seed,
         )
         return response["choices"][0]["message"]["content"]
 
@@ -134,6 +176,7 @@ class VLLMEngine(EngineLM):
         temperature=None,
         max_tokens=None,
         top_p=None,
+        seed=None,
     ):
         raise NotImplementedError(
             "VLLMEngine does not support multimodal input. Use text-only prompts."
@@ -143,12 +186,18 @@ class VLLMEngine(EngineLM):
         # Base class __call__ is a no-op; must override to delegate to generate()
         return self.generate(content, **kwargs)
 
+    def generate(self, content, system_prompt: str = None, **kwargs):
+        if "seed" not in kwargs:
+            kwargs["seed"] = self._next_request_seed()
+        return super().generate(content, system_prompt=system_prompt, **kwargs)
+
 
 def create_debater_engine(
     model: str = None,
     base_url: str = None,
     temperature: float = None,
     max_tokens: int = None,
+    seed: int = None,
 ) -> VLLMEngine:
     """Factory for the debater engine."""
     from tg_mad.config import DEBATER_MODEL, DEBATER_BASE_URL, TEMPERATURE
@@ -158,6 +207,7 @@ def create_debater_engine(
         base_url=base_url or DEBATER_BASE_URL,
         temperature=temperature if temperature is not None else TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else MAX_NEW_TOKENS,
+        seed=seed,
         cache=False,  # Need stochastic responses for agent diversity
     )
 
@@ -167,6 +217,7 @@ def create_evaluator_engine(
     base_url: str = None,
     temperature: float = None,
     max_tokens: int = None,
+    seed: int = None,
 ) -> VLLMEngine:
     """Factory for the evaluator/backward engine."""
     from tg_mad.config import EVALUATOR_MODEL, EVALUATOR_BASE_URL, EVALUATOR_TEMPERATURE
@@ -176,6 +227,7 @@ def create_evaluator_engine(
         base_url=base_url or EVALUATOR_BASE_URL,
         temperature=temperature if temperature is not None else EVALUATOR_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else MAX_NEW_TOKENS,
+        seed=seed,
         cache=False,
     )
 
@@ -186,6 +238,7 @@ def create_api_evaluator_engine(
     api_key: str = None,
     temperature: float = None,
     max_tokens: int = None,
+    seed: int = None,
 ) -> VLLMEngine:
     """Factory for API-based evaluator/backward engine (e.g. kimi-k2.5).
 
@@ -212,5 +265,6 @@ def create_api_evaluator_engine(
         api_key=resolved_key,
         temperature=temperature if temperature is not None else EVALUATOR_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else API_EVALUATOR_MAX_TOKENS,
+        seed=seed,
         cache=False,
     )

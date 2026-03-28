@@ -10,10 +10,15 @@ import matplotlib.pyplot as plt
 
 from tg_mad.config import DEBATER_BASE_URL, EXISTING_DATA_PATH, MAX_NEW_TOKENS, N_AGENTS, N_ROUNDS, OUTPUT_DIR
 from tg_mad.engine import create_debater_engine
+from tg_mad.experiment_profiles import (
+    apply_argparse_profile_defaults,
+    build_profile_metadata,
+)
 from tg_mad.evaluate import (
     _load_eval_samples,
     compute_baselines,
     evaluate_tgmad,
+    require_per_agent_prompt_entry,
     resolve_prompt_checkpoint,
 )
 from tg_mad.data_loader import load_split_info
@@ -25,6 +30,7 @@ def parse_args():
     parser.add_argument("--debater_base_url", type=str, default=None)
     parser.add_argument("--debater_model", type=str, default=None)
     parser.add_argument("--prompt_history", type=str, default=None)
+    parser.add_argument("--experiment_profile", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=OUTPUT_DIR)
     parser.add_argument("--results_file", type=str, default=None)
     parser.add_argument("--run_config_file", type=str, default=None)
@@ -37,7 +43,15 @@ def parse_args():
     parser.add_argument("--eval_existing_data", type=str, default=None)
     parser.add_argument(
         "--save_text_history",
+        dest="save_text_history",
         action="store_true",
+        default=True,
+        help="Accepted for CLI compatibility; checkpoint sweeps currently do not save per-sample text history.",
+    )
+    parser.add_argument(
+        "--no_save_text_history",
+        dest="save_text_history",
+        action="store_false",
         help="Accepted for CLI compatibility; checkpoint sweeps currently do not save per-sample text history.",
     )
     parser.add_argument(
@@ -68,7 +82,9 @@ def parse_args():
         action="store_true",
         help="Continue with placeholder text if the debater backend fails.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    apply_argparse_profile_defaults(args, parser, stage="eval_sweep")
+    return args
 
 
 def _resolve_sweep_indices(prompt_history, stride, explicit_indices):
@@ -161,31 +177,31 @@ def evaluate_sweep(args):
         raise ValueError("--n_rounds must be non-negative")
 
     paths = _resolve_paths(args)
-    save_json(
-        {
-            "output_dir": paths["output_dir"],
-            "prompt_history_file": paths["prompt_history"],
-            "results_file": paths["results_file"],
-            "plot_file": paths["plot_file"],
-            "split_info_file": paths["split_info_file"],
-            "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
-            "debater_model": args.debater_model,
-            "n_agents": args.n_agents,
-            "n_rounds": args.n_rounds,
-            "max_new_tokens": args.max_new_tokens,
-            "seed": args.seed,
-            "max_test_samples": args.max_test_samples,
-            "checkpoint_stride": args.checkpoint_stride,
-            "checkpoint_indices": args.checkpoint_indices,
-            "data_dir": args.data_dir,
-            "dataset": args.dataset,
-            "existing_data": args.existing_data,
-            "train_existing_data": args.train_existing_data,
-            "eval_existing_data": args.eval_existing_data,
-            "allow_failed_generations": args.allow_failed_generations,
-        },
-        paths["run_config_file"],
-    )
+    run_config = {
+        "experiment_profile": args.experiment_profile,
+        "output_dir": paths["output_dir"],
+        "prompt_history_file": paths["prompt_history"],
+        "results_file": paths["results_file"],
+        "plot_file": paths["plot_file"],
+        "split_info_file": paths["split_info_file"],
+        "debater_base_url": args.debater_base_url or DEBATER_BASE_URL,
+        "debater_model": args.debater_model,
+        "n_agents": args.n_agents,
+        "n_rounds": args.n_rounds,
+        "max_new_tokens": args.max_new_tokens,
+        "seed": args.seed,
+        "max_test_samples": args.max_test_samples,
+        "checkpoint_stride": args.checkpoint_stride,
+        "checkpoint_indices": args.checkpoint_indices,
+        "data_dir": args.data_dir,
+        "dataset": args.dataset,
+        "existing_data": args.eval_existing_data or args.existing_data,
+        "train_existing_data": args.train_existing_data,
+        "eval_existing_data": args.eval_existing_data,
+        "allow_failed_generations": args.allow_failed_generations,
+    }
+    run_config.update(build_profile_metadata(args.experiment_profile))
+    save_json(run_config, paths["run_config_file"])
 
     logger = setup_logging(paths["output_dir"], name="tg_mad_eval_sweep")
     set_seeds(args.seed)
@@ -220,12 +236,17 @@ def evaluate_sweep(args):
         model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
+        seed=args.seed,
     )
 
     checkpoint_results = []
     for prompt_index in sweep_indices:
         _, entry = resolve_prompt_checkpoint(prompt_history, prompt_index)
-        optimized_prompt = entry["prompts"] if "prompts" in entry else entry["prompt"]
+        optimized_prompt = require_per_agent_prompt_entry(
+            entry,
+            prompt_history_file=paths["prompt_history"],
+            prompt_index=prompt_index,
+        )
         logger.info(
             "Evaluating prompt index %d (epoch=%s, batch=%s)",
             prompt_index,
@@ -266,6 +287,7 @@ def evaluate_sweep(args):
 
     summary = {
         "schema_version": prompt_history[0].get("schema_version"),
+        "experiment_profile": args.experiment_profile,
         "prompt_history_file": paths["prompt_history"],
         "split_info_file": paths["split_info_file"],
         "num_test_samples": len(test_samples),
@@ -277,6 +299,7 @@ def evaluate_sweep(args):
         "evaluated_prompt_indices": sweep_indices,
         "checkpoints": checkpoint_results,
     }
+    summary.update(build_profile_metadata(args.experiment_profile))
     save_json(summary, paths["results_file"])
     _plot_sweep(summary, paths["plot_file"])
 

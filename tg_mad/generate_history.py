@@ -7,6 +7,10 @@ from pathlib import Path
 
 from tg_mad.data_loader import build_icl_prompt, get_fixed_pool_size, load_task_questions
 from tg_mad.engine import create_debater_engine
+from tg_mad.experiment_profiles import (
+    apply_argparse_profile_defaults,
+    build_profile_metadata,
+)
 from tg_mad.task_spec import get_task_spec
 from tg_mad.utils import save_json, set_seeds
 
@@ -20,10 +24,11 @@ except ImportError:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate legacy-format baseline history JSONL")
-    parser.add_argument("--dataset", type=str, required=True, choices=["gsm8k", "formal_logic", "hh_rlhf"])
+    parser.add_argument("--dataset", type=str, default=None, choices=["gsm8k", "formal_logic", "hh_rlhf"])
     parser.add_argument("--pool", type=str, required=True, choices=["train", "eval"])
     parser.add_argument("--debater_base_url", type=str, required=True)
-    parser.add_argument("--debater_model", type=str, required=True)
+    parser.add_argument("--debater_model", type=str, default=None)
+    parser.add_argument("--experiment_profile", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="./datasets")
     parser.add_argument("--output_path", type=str, default=None)
     parser.add_argument("--data_size", type=int, default=None)
@@ -52,7 +57,13 @@ def parse_args():
         default=None,
         help="Max number of ICL examples (default: use all train samples).",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    apply_argparse_profile_defaults(args, parser, stage="generate_history")
+    if args.dataset is None:
+        parser.error("--dataset is required unless provided by --experiment_profile.")
+    if args.debater_model is None:
+        parser.error("--debater_model is required unless provided by --experiment_profile.")
+    return args
 
 
 def _sanitize_model_label(model_name: str) -> str:
@@ -146,6 +157,7 @@ def generate_history(args):
         model=args.debater_model,
         base_url=args.debater_base_url,
         max_tokens=args.max_new_tokens,
+        seed=args.seed,
     )
 
     # Build ICL system prompt if enabled
@@ -236,6 +248,7 @@ def generate_history(args):
             f.write(json.dumps(record) + "\n")
 
     metadata = {
+        "experiment_profile": args.experiment_profile,
         "dataset": args.dataset,
         "pool": args.pool,
         "output_path": output_path,
@@ -250,6 +263,7 @@ def generate_history(args):
         "icl_max_examples": args.icl_max_examples,
         "icl_history_path": args.icl_history_path,
     }
+    metadata.update(build_profile_metadata(args.experiment_profile))
     save_json(metadata, str(Path(output_path).with_suffix(".meta.json")))
     print(f"Wrote {len(histories)} records to {output_path}")
     print(f"Metadata: {Path(output_path).with_suffix('.meta.json')}")

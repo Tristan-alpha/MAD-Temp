@@ -18,6 +18,8 @@ from typing import Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+from tg_mad.experiment_profiles import apply_process_env_profile_defaults
+
 
 def env_str(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -60,6 +62,27 @@ def append_optional_arg(args: List[str], flag: str, value: Optional[str]) -> Non
 def append_flag(args: List[str], flag: str, enabled: bool) -> None:
     if enabled:
         args.append(flag)
+
+
+def append_save_text_history_override(args: List[str]) -> None:
+    """Text history now defaults to on; only append an explicit opt-out."""
+    configured = env_optional("SAVE_TEXT_HISTORY")
+    if configured is None:
+        return
+    if configured.strip().lower() in {"0", "false", "no", "off"}:
+        args.append("--no_save_text_history")
+
+
+def enforce_per_agent_prompt_mode() -> None:
+    """Reject stale env attempts to force the removed shared-prompt mode."""
+    configured = env_optional("PER_AGENT_PROMPTS")
+    if configured is None:
+        return
+    if configured.strip().lower() in {"0", "false", "no", "off"}:
+        raise RuntimeError(
+            "Shared prompt mode has been removed. "
+            "Delete PER_AGENT_PROMPTS=0 and rerun in the default per-agent mode."
+        )
 
 
 def ensure_vllm_installed() -> None:
@@ -450,6 +473,7 @@ def start_vllm_server(
     host: str,
     port: int,
     model_name: str,
+    dtype: str,
     gpu_memory_utilization: float,
     max_num_seqs: int,
     tensor_parallel_size: int,
@@ -482,7 +506,7 @@ def start_vllm_server(
         "--max-num-seqs",
         str(max_num_seqs),
         "--dtype",
-        "bfloat16",
+        dtype,
         "--tensor-parallel-size",
         str(tensor_parallel_size),
         "--generation-config",
@@ -544,14 +568,29 @@ def stop_processes(processes: List[ServerProcess]) -> None:
         server.handle.close()
 
 
+def _redact_command(command: List[str]) -> List[str]:
+    redacted = list(command)
+    secret_flags = {"--evaluator_api_key"}
+    i = 0
+    while i < len(redacted):
+        if redacted[i] in secret_flags and i + 1 < len(redacted):
+            redacted[i + 1] = "<redacted>"
+            i += 2
+            continue
+        i += 1
+    return redacted
+
+
 def run_command(command: List[str], *, cwd: Path, env: Dict[str, str], dry_run: bool) -> None:
-    print(shlex.join(command), flush=True)
+    print(shlex.join(_redact_command(command)), flush=True)
     if dry_run:
         return
     subprocess.run(command, cwd=cwd, env=env, check=True)
 
 
 def run_train(dry_run: bool) -> None:
+    apply_process_env_profile_defaults(stage="train")
+    enforce_per_agent_prompt_mode()
     repo_root = Path(env_str("REPO_ROOT", str(Path(__file__).resolve().parents[1]))).resolve()
     output_dir = Path(env_str("OUTPUT_DIR", "out/tg_mad")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -645,6 +684,8 @@ def run_train(dry_run: bool) -> None:
     )
 
     print("=== TG-MAD Training ===", flush=True)
+    if env_optional("EXPERIMENT_PROFILE"):
+        print(f"Experiment profile: {env_optional('EXPERIMENT_PROFILE')}", flush=True)
     print(f"Node: {env_str('SLURMD_NODENAME', os.uname().nodename)}", flush=True)
     print(f"Repo: {repo_root}", flush=True)
     print(
@@ -686,6 +727,7 @@ def run_train(dry_run: bool) -> None:
                 host=host,
                 port=debater_port,
                 model_name=debater_model_name,
+                dtype=env_str("DEBATER_DTYPE", "bfloat16"),
                 gpu_memory_utilization=env_float("DEBATER_GPU_MEMORY", 0.45),
                 max_num_seqs=env_int("DEBATER_MAX_NUM_SEQS", 4),
                 tensor_parallel_size=debater_tp,
@@ -719,6 +761,7 @@ def run_train(dry_run: bool) -> None:
                 host=host,
                 port=evaluator_port,
                 model_name=env_str("EVALUATOR_MODEL_NAME", "Qwen/Qwen3-8B"),
+                dtype=env_str("EVALUATOR_DTYPE", "bfloat16"),
                 gpu_memory_utilization=env_float("EVALUATOR_GPU_MEMORY", 0.55),
                 max_num_seqs=env_int("EVALUATOR_MAX_NUM_SEQS", 1),
                 tensor_parallel_size=evaluator_tp,
@@ -791,6 +834,11 @@ def run_train(dry_run: bool) -> None:
             "--dataset",
             env_str("DATASET", "hh_rlhf"),
         ]
+        append_optional_arg(
+            train_cmd,
+            "--experiment_profile",
+            env_optional("EXPERIMENT_PROFILE"),
+        )
 
         if evaluator_type == "api":
             evaluator_api_key = env_optional("EVALUATOR_API_KEY") or base_env.get(
@@ -817,7 +865,7 @@ def run_train(dry_run: bool) -> None:
             train_cmd.extend(["--evaluator_base_url", evaluator_url])
             append_optional_arg(train_cmd, "--evaluator_model", evaluator_engine_model)
 
-        append_flag(train_cmd, "--save_text_history", env_bool("SAVE_TEXT_HISTORY", False))
+        append_save_text_history_override(train_cmd)
         append_flag(
             train_cmd,
             "--allow_failed_generations",
@@ -825,8 +873,8 @@ def run_train(dry_run: bool) -> None:
         )
         append_flag(
             train_cmd,
-            "--per_agent_prompts",
-            env_bool("PER_AGENT_PROMPTS", False),
+            "--skip_failed_optimizer_steps",
+            env_bool("SKIP_FAILED_OPTIMIZER_STEPS", False),
         )
         append_optional_arg(train_cmd, "--text_history_dir", env_optional("TEXT_HISTORY_DIR"))
         append_optional_arg(train_cmd, "--data_dir", env_optional("DATA_DIR"))
@@ -865,6 +913,7 @@ def run_train(dry_run: bool) -> None:
 
 
 def run_eval(dry_run: bool) -> None:
+    apply_process_env_profile_defaults(stage="eval")
     repo_root = Path(env_str("REPO_ROOT", str(Path(__file__).resolve().parents[1]))).resolve()
     output_dir = Path(env_str("OUTPUT_DIR", "out/tg_mad")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -904,6 +953,8 @@ def run_eval(dry_run: bool) -> None:
     )
 
     print("=== TG-MAD Evaluation ===", flush=True)
+    if env_optional("EXPERIMENT_PROFILE"):
+        print(f"Experiment profile: {env_optional('EXPERIMENT_PROFILE')}", flush=True)
     print(f"Node: {env_str('SLURMD_NODENAME', os.uname().nodename)}", flush=True)
     print(f"Repo: {repo_root}", flush=True)
     print(
@@ -932,6 +983,7 @@ def run_eval(dry_run: bool) -> None:
                 host=host,
                 port=debater_port,
                 model_name=debater_model_name,
+                dtype=env_str("DEBATER_DTYPE", "bfloat16"),
                 gpu_memory_utilization=env_float("DEBATER_GPU_MEMORY", 0.45),
                 max_num_seqs=env_int("DEBATER_MAX_NUM_SEQS", 4),
                 tensor_parallel_size=env_int("DEBATER_TENSOR_PARALLEL_SIZE", 1),
@@ -993,8 +1045,13 @@ def run_eval(dry_run: bool) -> None:
             "--dataset",
             env_str("DATASET", "hh_rlhf"),
         ]
+        append_optional_arg(
+            eval_cmd,
+            "--experiment_profile",
+            env_optional("EXPERIMENT_PROFILE"),
+        )
 
-        append_flag(eval_cmd, "--save_text_history", env_bool("SAVE_TEXT_HISTORY", False))
+        append_save_text_history_override(eval_cmd)
         append_flag(
             eval_cmd,
             "--allow_failed_generations",
