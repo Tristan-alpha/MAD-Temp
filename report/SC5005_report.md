@@ -1,6 +1,6 @@
 # Exploring LLM Agents' Capabilities and Limitations in Alignment Evaluation: From Single-Agent to Optimized Multi-Agent Debate
 
-**Team Members**: [Your names here]
+**Team Members**: LIU DAZHOU, GAO WENBO, FEI HAORAN
 
 **Module**: SC5005 NLP, LLMs and Applications (Part 2)
 
@@ -8,33 +8,27 @@
 
 ## 1. Introduction and Motivation
 
-Large language models (LLMs) are increasingly used not only as conversational agents but also as evaluators and judges for AI alignment tasks. A core challenge in reinforcement learning from human feedback (RLHF) is determining which of two model responses is more helpful and/or harmless --- a task that requires nuanced judgment beyond surface-level features. Even frontier models struggle with such preference classification, achieving only 50--80% accuracy on established benchmarks, leaving significant room for analysis of failure modes and improvement strategies.
+Large language models (LLMs) are increasingly used not only as conversational agents but also as evaluators and judges for AI alignment tasks. A core challenge in RLHF is determining which of two responses is more helpful and/or harmless --- a task requiring nuanced judgment beyond surface-level features. Even frontier models achieve only 50--80% accuracy on such benchmarks, leaving significant room for failure analysis.
 
-In this study, we investigate LLM agents' capabilities and limitations through two complementary comparison axes: (a) **different methods on the same model** --- progressing from single-agent to majority voting, multi-agent debate (MAD), in-context learning MAD, and TextGrad-optimized MAD using Qwen2.5-7B-Instruct; and (b) **different models on the same task** --- comparing the local 7B model against frontier models (Gemini 3.1 Pro, ChatGPT 5.3) on a representative subset of questions.
-
-Our research questions are: How do multi-agent strategies compare to single-agent baselines? Can systematic prompt optimization close the gap with frontier models? What reasoning failures persist across model scales, and what do they reveal about current LLM limitations?
+We investigate LLM capabilities and limitations through two comparison axes: (a) **different methods on the same model** --- from single-agent to majority voting, multi-agent debate (MAD), ICL-MAD, and TextGrad-optimized MAD using Qwen2.5-7B-Instruct; and (b) **different models on the same task** --- comparing the local 7B model against Gemini 3.1 Pro and ChatGPT 5.3. Our research questions: How do multi-agent strategies compare to single-agent baselines? Can prompt optimization close the gap with frontier models? What reasoning failures persist across model scales?
 
 ## 2. Application Setting and Task Definition
 
-**Domain.** AI safety and alignment evaluation --- specifically, automated preference classification for RLHF training data curation.
+**Domain.** AI safety and alignment evaluation --- automated preference classification for RLHF data curation.
 
-**Dataset.** We use the HH-RLHF dataset (Bai et al., 2022), a pairwise preference benchmark where each sample presents two assistant responses to the same human query, and a human label indicates which response is more helpful and/or harmless. We use 300 evaluation questions and 60 training questions (for prompt optimization and in-context learning).
+**Dataset.** The HH-RLHF dataset (Bai et al., 2022) is a pairwise preference benchmark where each sample presents two assistant responses and a human label indicating which is more helpful and/or harmless. We use 300 evaluation and 60 training questions.
 
-**Task.** Given a pair of responses (A) and (B), the agent must classify which is relatively more helpful and/or harmless, outputting a final answer in the format `{final answer: (X)}`.
+**Task.** Given responses (A) and (B), classify which is more helpful/harmless, outputting `{final answer: (X)}`.
 
-**Why this setting is interesting.** Single-agent accuracy on this task hovers around 50% --- near random chance --- indicating that current models genuinely struggle with nuanced helpfulness-harmlessness trade-offs. This provides ample opportunity to study failure modes, reasoning breakdowns, and the effect of different agent strategies. A key observation is that models should evaluate based on the question's criterion (helpfulness/harmlessness), not irrelevant surface features such as answer length, grammar, or response structure --- yet we find they frequently rely on such shallow heuristics.
+**Why this is interesting.** Single-agent accuracy hovers around 50% --- near random --- indicating models genuinely struggle with nuanced helpfulness-harmlessness trade-offs. Models should evaluate based on the question's criterion, not irrelevant surface features such as answer length or grammar --- yet we find they frequently rely on such shallow heuristics.
 
 ## 3. Related Background
 
-**Multi-Agent Debate (MAD).** Du et al. (2023) proposed that multiple LLM instances can debate their answers across rounds, using peer responses as feedback to refine reasoning. This approach has shown improvements in factuality and mathematical reasoning over single-agent baselines.
+**Multi-Agent Debate (MAD).** Du et al. (2023) proposed that multiple LLM instances debate across rounds, using peer responses to refine reasoning, improving factuality over single-agent baselines.
 
-**TextGrad.** Yuksekgonul et al. (2024) introduced TextGrad, a framework that treats natural language feedback as analogous to gradients in neural network training. Instead of computing numerical gradients, an evaluator LLM generates textual feedback on response quality, and an optimizer LLM uses this feedback to update text variables (e.g., system prompts). The optimization loop consists of: (1) a forward pass where agents generate responses using current prompts, (2) an evaluation step where an evaluator LLM produces per-agent feedback, (3) a "backward pass" where feedback is attached as textual "gradients" to prompt variables, and (4) an optimizer step where prompts are rewritten to address the feedback. This enables systematic prompt optimization without manual engineering.
+**TextGrad.** Yuksekgonul et al. (2024) treats natural language feedback as analogous to gradients. An evaluator LLM generates textual feedback, and an optimizer LLM uses it to update text variables (e.g., system prompts): (1) forward pass --- agents respond, (2) evaluation --- per-agent feedback, (3) "backward pass" --- feedback as "gradients," (4) optimizer step --- prompts rewritten.
 
-**HH-RLHF.** Bai et al. (2022) introduced the Helpful and Harmless RLHF dataset for training AI assistants that are both helpful and safe. The dataset contains human preference labels over pairs of model responses.
-
-**LLM-as-Judge.** Zheng et al. (2023) established that LLMs can serve as scalable evaluators, though they exhibit systematic biases including position bias, verbosity bias, and self-enhancement bias.
-
-**In-Context Learning (ICL).** Brown et al. (2020) demonstrated that LLMs can learn from examples provided in the prompt, adapting their behavior without parameter updates.
+**Other Work.** Bai et al. (2022) introduced HH-RLHF for helpful/harmless assistants. Zheng et al. (2023) established LLM-as-Judge with known biases (position, verbosity). Brown et al. (2020) demonstrated in-context learning.
 
 ## 4. Methodology and Evaluation Setup
 
@@ -46,16 +40,16 @@ We evaluate five progressively sophisticated methods using Qwen2.5-7B-Instruct (
 
 **2. Majority Voting.** Five independent agents answer the question without interaction, and the final answer is determined by majority vote (accuracy: 51.0%).
 
-**3. Standard MAD.** Multiple LLM agents independently answer a question in Round 0, then engage in multi-round debate where each agent sees all other agents' responses from the previous round and revises its own answer. The final answer is determined by majority vote after the last round. The key idea is that inter-agent discussion can surface errors and improve reasoning through peer critique (Du et al., 2023). In our setup: 5 agents, 2 debate rounds, decentralized topology where each agent sees all peers (accuracy: 51.7%). Figure 1 illustrates the MAD architecture.
+**3. Standard MAD.** Agents independently answer in Round 0, then debate across rounds where each agent sees all peers' previous responses and revises its answer. Final answer by majority vote. The key idea: inter-agent discussion surfaces errors through peer critique (Du et al., 2023). Setup: 5 agents, 2 rounds, decentralized topology (accuracy: 51.7%). Figure 1 illustrates the architecture.
 
 ![Figure 1: Multi-Agent Debate Architecture](../MAD.png)
-*Figure 1: Comparison of Majority Voting (left) and Multi-Agent Debate (right). In MAD, agents exchange responses across T rounds before reaching a final answer.*
+*Figure 1: Majority Voting (left) vs Multi-Agent Debate (right). In MAD, agents exchange responses across T rounds.*
 
-**4. ICL-MAD.** Standard MAD augmented with 60 ground-truth question-answer examples as in-context learning in the system prompt. This provides a controlled comparison with TG-MAD, as both methods have access to the same training labels (accuracy: 52.3%).
+**4. ICL-MAD.** Standard MAD with 60 ground-truth QA examples as in-context learning in the system prompt. Provides a controlled comparison with TG-MAD since both access the same training labels (accuracy: 52.3%).
 
-**5. TG-MAD.** TextGrad-optimized MAD where each agent's system prompt is treated as a learnable variable optimized over 60 training samples across 3 epochs with batch size 1. The optimization loop works as follows: (1) forward pass --- agents debate with current prompts; (2) evaluation --- an evaluator LLM generates per-agent feedback based on the debate transcript and ground truth; (3) "backward pass" --- feedback is attached as "gradients" to prompt variables; (4) optimizer step --- prompts are rewritten to address the feedback (accuracy: 53.7%).
+**5. TG-MAD.** Each agent's system prompt is a learnable variable optimized via TextGrad over 60 training samples, 3 epochs, batch size 1 (accuracy: 53.7%).
 
-The narrative behind this progression: we began with a single agent, then tried majority voting and multi-agent debate, discovering that the quality of debate prompts matters significantly. This motivated using TextGrad to systematically optimize prompts. For fairness, we also evaluated ICL-MAD, which sees the same 60 ground-truth labels as TG-MAD but uses them as in-context examples rather than for optimization.
+We progressed from single agent to MAD, discovering that prompt quality matters significantly. This motivated TextGrad optimization. For fairness, ICL-MAD uses the same 60 labels as in-context examples rather than for optimization.
 
 ### 4.2 Comparison Axis 2: Different Models, Same Task
 
@@ -88,17 +82,15 @@ Table 1 shows accuracy across all five methods on the full 300-question evaluati
 ![Figure 2: Overall Accuracy Comparison](../out/tg_mad_hh_rlhf_qwen25_7b_peragent_r2_bs1_ep3_nh100_20260325_try2/overall_accuracy_bar.png)
 *Figure 2: Overall accuracy comparison across all five methods.*
 
-TG-MAD achieves the highest accuracy (53.7%), a 3.3 percentage point improvement over the single-agent baseline. Notably, TG-MAD exhibits a dramatically higher correction rate (21.0%) compared to standard MAD (5.3%), indicating that optimized prompts encourage agents to change incorrect answers more actively. However, this comes with a trade-off: the subversion rate also increases to 18.3%, meaning agents sometimes change correct answers to incorrect ones during debate.
+TG-MAD achieves the highest accuracy (53.7%), +3.3pp over baseline. It has a much higher correction rate (21.0% vs 5.3% for standard MAD), but also higher subversion rate (18.3%), meaning debate sometimes degrades correct answers. Figures 3 and 4 show these dynamics.
 
 ![Figure 3: Correction and Subversion Rates](../out/tg_mad_hh_rlhf_qwen25_7b_peragent_r2_bs1_ep3_nh100_20260325_try2/subversion_correction_bar.png)
-*Figure 3: Correction, subversion, maintained-correct, and maintained-wrong rates across debate methods.*
-
-### 5.2 Round-by-Round Dynamics
+*Figure 3: Correction, subversion, maintained-correct, and maintained-wrong rates.*
 
 ![Figure 4: Round-by-Round Accuracy](../out/tg_mad_hh_rlhf_qwen25_7b_peragent_r2_bs1_ep3_nh100_20260325_try2/round_accuracy_comparison.png)
-*Figure 4: Accuracy across debate rounds for Standard MAD, ICL-MAD, and TG-MAD.*
+*Figure 4: Round-by-round accuracy for Standard MAD, ICL-MAD, and TG-MAD.*
 
-TG-MAD starts with higher initial accuracy at Round 0 (53.3%) compared to standard MAD (50.4%), showing that optimized prompts improve even independent reasoning before debate begins. TG-MAD peaks at Round 1 (53.7%) but slightly decreases at Round 2 (52.9%), suggesting diminishing returns from extended debate.
+TG-MAD starts higher at Round 0 (53.3% vs 50.4%), showing optimized prompts improve even pre-debate reasoning. It peaks at Round 1 but slightly decreases at Round 2, suggesting diminishing returns.
 
 ### 5.3 Qualitative Findings: Shallow Heuristics
 
@@ -160,21 +152,19 @@ The S167 case reveals a **systematic reasoning failure** that spans model scales
 
 Based on our observed limitations, we propose five concrete directions for future work:
 
-**1. Debate-Aware Prompt Optimization.** Current TG-MAD treats each agent's prompt independently. Future work could optimize prompts jointly for complementary roles --- e.g., a "devil's advocate" agent that challenges consensus, a "fact-checker" that prioritizes accuracy, and a "synthesizer" that integrates perspectives. This could reduce harmful convergence by design.
+**1. Debate-Aware Prompt Optimization.** Current TG-MAD optimizes each agent's prompt independently. Joint optimization for complementary roles (devil's advocate, fact-checker, synthesizer) could reduce harmful convergence by design.
 
-**2. Confidence-Weighted Voting.** Agents that frequently flip their answers across rounds may be less reliable. A confidence-weighted voting mechanism could down-weight agents that change positions easily, reducing the impact of agents susceptible to peer pressure. This addresses the subversion problem where debate degrades initially correct answers.
+**2. Confidence-Weighted Voting.** Down-weighting agents that frequently flip answers across rounds would reduce the impact of peer-pressure-susceptible agents, directly addressing subversion.
 
-**3. Subversion Penalty in Optimization.** TG-MAD's high subversion rate (18.3%) suggests that optimization sometimes improves correction at the cost of stability. Adding an explicit penalty term for correctness regression during TextGrad training --- e.g., penalizing prompt updates that cause previously correct answers to become incorrect --- could improve the correction-subversion trade-off.
+**3. Subversion Penalty.** Adding an explicit penalty for correctness regression during TextGrad training could improve the correction-subversion trade-off (currently 21.0% correction vs 18.3% subversion).
 
-**4. Hybrid Local-Frontier Routing.** Our results show that frontier models (Gemini 3.1 Pro at 81.8%) significantly outperform local models. A practical system could use cheap local debate for high-confidence cases and route low-confidence cases to frontier models, optimizing the cost-accuracy trade-off. Debate disagreement or flip rate could serve as routing signals.
+**4. Hybrid Local-Frontier Routing.** Using cheap local debate for high-confidence cases and routing uncertain cases to frontier models (Gemini at 81.8%) would optimize cost-accuracy. Debate disagreement could serve as routing signal.
 
-**5. Process Reward Signals for Unsupervised Optimization.** Current TG-MAD requires ground-truth labels for training. Debate dynamics such as flip rate (fraction of agents changing answers), disagreement drop (convergence across rounds), and perturbation stability could serve as unsupervised training signals. This would enable prompt optimization on unlabeled data, dramatically expanding the applicable training set.
+**5. Unsupervised Process Signals.** Debate dynamics (flip rate, disagreement drop, perturbation stability) could replace ground-truth labels as training signals, enabling optimization on unlabeled data.
 
 ## 8. Discussion and Conclusion
 
-This study systematically investigated LLM capabilities and limitations in alignment evaluation through the lens of multi-agent debate. Our key findings are: (1) Multi-agent strategies provide modest but consistent improvements over single-agent baselines on preference classification. (2) Prompt optimization via TextGrad yields the largest gains (+3.3pp over baseline), outperforming in-context learning with the same training data. (3) Models across scales exhibit a systematic tendency to rely on shallow heuristics (length, grammar, structure) rather than evaluating the actual helpfulness/harmlessness criterion. (4) Harmful convergence in debate --- where correct agents are persuaded by plausible but incorrect reasoning --- is a significant failure mode that optimized prompts can partially mitigate.
-
-The near-random baseline (~50%) underscores that nuanced preference classification remains genuinely hard for current LLMs, even with multi-agent strategies. Future work on debate-aware optimization, subversion penalties, and unsupervised training signals could further improve these systems' reliability as alignment evaluators.
+Our key findings: (1) Multi-agent strategies provide modest but consistent improvements over single-agent baselines. (2) TextGrad prompt optimization yields the largest gains (+3.3pp), outperforming ICL with the same training data. (3) Models across scales rely on shallow heuristics (length, grammar) rather than the actual evaluation criterion. (4) Harmful convergence --- correct agents persuaded by plausible but wrong reasoning --- is a significant failure mode that optimized prompts partially mitigate. The near-random baseline (~50%) underscores that preference classification remains genuinely hard for current LLMs.
 
 ## References
 

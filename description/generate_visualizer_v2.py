@@ -1,79 +1,220 @@
-import json
+import argparse
 import glob
+import json
 import os
 import re
 
 HISTORY_DIR = "/export/home3/dazhou/debate-or-vote/out/history"
 
-def load_data():
-    # Search all subdirs but exclude backup directories
-    all_files = glob.glob(os.path.join(HISTORY_DIR, "**", "*.jsonl"), recursive=True)
-    files = [f for f in all_files if "previous_backup" not in f]
-    
+LEGACY_FILENAME_PATTERN = re.compile(
+    r"([a-zA-Z0-9_]+)_\d+__(.+?)_N=(\d+)_R=(\d+)(?:_TR=(\d+)_TT=([\d\.]+))?.*\.jsonl"
+)
+
+
+def _to_int(value, default=-1):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(value, default=-1.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_model_name(model_name):
+    if not model_name:
+        return "unknown_model"
+    return str(model_name).replace("hosted_vllm/", "").replace("/", "_")
+
+
+def _metadata_from_path(file_path):
+    basename = os.path.basename(file_path)
+    match = LEGACY_FILENAME_PATTERN.match(basename)
+    if match:
+        tr = _to_int(match.group(5), default=_to_int(match.group(4), -1))
+        tt = _to_float(match.group(6), -1.0)
+        return {
+            "dataset": match.group(1),
+            "model": match.group(2),
+            "TR": tr,
+            "TT": tt,
+        }
+
+    dataset_name = "unknown_dataset"
+    marker = f"{os.sep}out{os.sep}history{os.sep}"
+    normalized = os.path.abspath(file_path)
+    if marker in normalized:
+        subpath = normalized.split(marker, 1)[1]
+        dataset_name = subpath.split(os.sep, 1)[0]
+
+    return {
+        "dataset": dataset_name,
+        "model": "unknown_model",
+        "TR": -1,
+        "TT": -1.0,
+    }
+
+
+def _merge_manifest_metadata(base_meta, manifest_record):
+    run_config = manifest_record.get("run_config", {}) if isinstance(manifest_record, dict) else {}
+
+    merged = dict(base_meta)
+    merged["dataset"] = (
+        manifest_record.get("dataset")
+        or run_config.get("dataset")
+        or merged["dataset"]
+    )
+    merged["model"] = _normalize_model_name(
+        run_config.get("debater_model")
+        or run_config.get("model")
+        or merged["model"]
+    )
+    merged["TR"] = _to_int(run_config.get("n_rounds"), merged["TR"])
+    merged["TT"] = _to_float(
+        run_config.get("debater_temperature", run_config.get("temperature")),
+        merged["TT"],
+    )
+    return merged
+
+
+def _parse_legacy_record(record, meta, basename, global_id):
+    if not isinstance(record, dict):
+        return None
+
+    answer = record.get("0", {}).get("answer", "N/A")
+    rounds_info = {}
+    keys = sorted([k for k in record.keys() if str(k).isdigit()], key=int)
+
+    for r_key in keys:
+        r_data = record.get(r_key, {})
+        responses = r_data.get("responses", {}) if isinstance(r_data, dict) else {}
+        agents_resps = {}
+        for key, value in responses.items():
+            short_key = str(key).split("__")[-1]
+            agents_resps[short_key] = value
+
+        final_answers = r_data.get("final_answers", []) if isinstance(r_data, dict) else []
+        rounds_info[r_key] = {
+            "responses": agents_resps,
+            "final_answers": final_answers,
+            "consensus": r_data.get("debate_answer", "N/A"),
+            "is_correct": bool(r_data.get("debate_answer_iscorr", False)),
+        }
+
+    if not keys:
+        return None
+
+    last_round_key = keys[-1]
+    final_correct = rounds_info[last_round_key]["is_correct"]
+    return {
+        "id": global_id,
+        "file": basename,
+        "dataset": meta["dataset"],
+        "model": meta["model"],
+        "TR": meta["TR"],
+        "TT": meta["TT"],
+        "is_correct": final_correct,
+        "answer": answer,
+        "rounds": rounds_info,
+        "round_keys": keys,
+    }
+
+
+def _parse_tg_sample_record(record, meta, basename, global_id):
+    rounds_raw = record.get("rounds", {}) if isinstance(record, dict) else {}
+    if not isinstance(rounds_raw, dict) or not rounds_raw:
+        return None
+
+    ground_truth = record.get("ground_truth", "N/A")
+    round_keys = sorted(rounds_raw.keys(), key=lambda x: int(x) if str(x).isdigit() else str(x))
+    rounds_info = {}
+
+    for r_key in round_keys:
+        r_data = rounds_raw.get(r_key, {})
+        answers = r_data.get("answers", []) if isinstance(r_data, dict) else []
+        parsed = r_data.get("parsed", []) if isinstance(r_data, dict) else []
+        majority_vote = r_data.get("majority_vote", "N/A") if isinstance(r_data, dict) else "N/A"
+
+        responses = {
+            f"Agent {idx + 1}": ans for idx, ans in enumerate(answers)
+        }
+
+        round_correct = False
+        if isinstance(ground_truth, str) and ground_truth.strip() and isinstance(majority_vote, str):
+            round_correct = majority_vote.strip() == ground_truth.strip()
+
+        rounds_info[str(r_key)] = {
+            "responses": responses,
+            "final_answers": parsed,
+            "consensus": majority_vote,
+            "is_correct": round_correct,
+        }
+
+    final_correct = bool(record.get("final_correct", False))
+    return {
+        "id": global_id,
+        "file": basename,
+        "dataset": meta["dataset"],
+        "model": meta["model"],
+        "TR": meta["TR"],
+        "TT": meta["TT"],
+        "is_correct": final_correct,
+        "answer": ground_truth,
+        "rounds": rounds_info,
+        "round_keys": [str(k) for k in round_keys],
+    }
+
+
+def resolve_input_files(input_files, input_glob, history_dir):
+    if input_files:
+        candidates = []
+        for path in input_files:
+            abs_path = path if os.path.isabs(path) else os.path.abspath(path)
+            candidates.append(abs_path)
+    elif input_glob:
+        candidates = glob.glob(input_glob, recursive=True)
+    else:
+        candidates = glob.glob(os.path.join(history_dir, "**", "*.jsonl"), recursive=True)
+
+    files = []
+    for path in sorted(set(candidates)):
+        if "previous_backup" in path:
+            continue
+        if os.path.isfile(path):
+            files.append(path)
+    return files
+
+def load_data(files):
     all_data = []
-    
-    # Updated regex to capture dataset, model, TR, TT
-    pattern = re.compile(r"([a-zA-Z0-9_]+)_\d+__(.+?)_N=\d+_R=\d+_TR=(\d+)_TT=([\d\.]+)\.jsonl")
-    
+
+    global_id = 0
     for f in files:
         basename = os.path.basename(f)
-        match = pattern.match(basename)
-        if not match:
-            continue
-        
-        dataset_name = match.group(1)
-        model_name = match.group(2)
-        tr = int(match.group(3))
-        tt = float(match.group(4))
-        
-        with open(f, 'r') as file:
-            lines = file.readlines()
-            for idx, line in enumerate(lines):
+        file_meta = _metadata_from_path(f)
+
+        with open(f, "r", encoding="utf-8") as file:
+            for line in file:
                 if not line.strip():
                     continue
                 record = json.loads(line)
-                
-                answer = record.get('0', {}).get('answer', 'N/A')
-                
-                # Process rounds
-                rounds_info = {}
-                keys = sorted([k for k in record.keys() if k.isdigit()], key=int)
-                
-                for r_key in keys:
-                    r_data = record[r_key]
-                    responses = r_data.get('responses', {})
-                    agents_resps = {}
-                    for k, v in responses.items():
-                        short_k = k.split("__")[-1] 
-                        agents_resps[short_k] = v
-                    
-                    final_answers = r_data.get('final_answers', [])
-                    
-                    rounds_info[r_key] = {
-                        "responses": agents_resps,
-                        "final_answers": final_answers,
-                        "consensus": r_data.get('debate_answer'),
-                        "is_correct": r_data.get('debate_answer_iscorr', False)
-                    }
 
-                last_round_key = keys[-1] if keys else None
-                final_correct = False
-                if last_round_key:
-                    final_correct = rounds_info[last_round_key]["is_correct"]
+                if isinstance(record, dict) and record.get("record_type") == "manifest":
+                    file_meta = _merge_manifest_metadata(file_meta, record)
+                    continue
 
-                entry = {
-                    "id": idx,
-                    "file": basename,
-                    "dataset": dataset_name,
-                    "model": model_name,
-                    "TR": tr,
-                    "TT": tt,
-                    "is_correct": final_correct,
-                    "answer": answer,
-                    "rounds": rounds_info,
-                    "round_keys": keys
-                }
-                all_data.append(entry)
+                entry = None
+                if isinstance(record, dict) and record.get("record_type") == "sample":
+                    entry = _parse_tg_sample_record(record, file_meta, basename, global_id)
+                elif isinstance(record, dict) and any(str(k).isdigit() for k in record.keys()):
+                    entry = _parse_legacy_record(record, file_meta, basename, global_id)
+
+                if entry is not None:
+                    all_data.append(entry)
+                    global_id += 1
     
     print(f"Loaded {len(all_data)} records from {len(files)} files")
     datasets = sorted(set(e['dataset'] for e in all_data))
@@ -82,7 +223,7 @@ def load_data():
     print(f"Models: {models}")
     return all_data
 
-def generate_html(data):
+def generate_html(data, output_path):
     # Sort data: dataset -> model -> TR -> TT -> ID
     data.sort(key=lambda x: (x['dataset'], x['model'], x['TR'], x['TT'], x['id']))
     
@@ -410,11 +551,54 @@ def generate_html(data):
 </html>
     """
     
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'debate_visualizer_v2.html')
-    with open(output_path, 'w') as f:
+    with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
     print(f"Visualizer V2 generated: {output_path}")
 
+
+def parse_args():
+    default_output = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "debate_visualizer_v2.html",
+    )
+    parser = argparse.ArgumentParser(
+        description="Generate an interactive debate history visualizer from JSONL files."
+    )
+    parser.add_argument(
+        "--input-file",
+        action="append",
+        default=[],
+        help="Path to a specific JSONL file. Repeat this flag to include multiple files.",
+    )
+    parser.add_argument(
+        "--input-glob",
+        default="",
+        help="Glob pattern for input files, for example 'out/history/formal_logic/**/*.jsonl'.",
+    )
+    parser.add_argument(
+        "--history-dir",
+        default=HISTORY_DIR,
+        help="Fallback root directory when no input file or glob is provided.",
+    )
+    parser.add_argument(
+        "--output",
+        default=default_output,
+        help="Output HTML path.",
+    )
+    return parser.parse_args()
+
 if __name__ == "__main__":
-    data = load_data()
-    generate_html(data)
+    args = parse_args()
+    input_files = resolve_input_files(
+        input_files=args.input_file,
+        input_glob=args.input_glob,
+        history_dir=args.history_dir,
+    )
+
+    if not input_files:
+        raise SystemExit("No valid input JSONL files found. Check --input-file or --input-glob.")
+
+    data = load_data(input_files)
+    output_path = args.output if os.path.isabs(args.output) else os.path.abspath(args.output)
+    generate_html(data, output_path)
