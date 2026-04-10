@@ -10,3 +10,4 @@ job-*.output
 *.tar.gz
 logs/
 node_modules/
+.html
