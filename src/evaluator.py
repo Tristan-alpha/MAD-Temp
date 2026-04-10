@@ -30,12 +30,23 @@ def get_instruction_suffix_for_data(data, bae=False, cot=False):
         else:
             return ' Make sure to state your final answer in curly brackets at the very end of your response, just like: "{final answer: 123}".'
     elif data in MCQ_DATASETS:
+        # strict_mcq_suffix = (
+        #     " Your final answer MUST be exactly in this format with no extra formatting:\n"
+        #     "{final answer: (X)}\n"
+        #     "Do NOT use LaTeX, \\boxed, \\text, or any other markup. Just plain text inside curly brackets."
+        # )
+        strict_mcq_suffix = (
+            ' Make sure to state your final answer choice in curly brackets at the very end of your response, just like: "{final answer: (X)}". Do NOT use LaTeX, \\boxed, \\text, or any other markup. Just plain text inside curly brackets.'
+        )
         if bae:
-            return ' Put your final answer in the form (X) at the end of your response.'
+            # return ' Put your final answer in the form (X) at the end of your response.'
+            return strict_mcq_suffix
         elif cot:
-            return " Make sure to state your final answer choice in curly brackets at the very end of your response, just like: '{final answer: (A)}'. Let's think step by step."
+            # return " Make sure to state your final answer choice in curly brackets at the very end of your response, just like: '{final answer: (A)}'. Let's think step by step."
+            return strict_mcq_suffix
         else:
-            return ' Make sure to state your final answer choice in curly brackets at the very end of your response, just like: "{final answer: (A)}".'
+            # return ' Make sure to state your final answer choice in curly brackets at the very end of your response, just like: "{final answer: (A)}".'
+            return strict_mcq_suffix
     elif data in ['cnn_daily']:
         return ' Make sure to provide your summary after stating "# Summary # ".'
 

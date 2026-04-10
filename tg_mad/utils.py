@@ -222,6 +222,11 @@ def setup_logging(output_dir: str, name: str = "tg_mad") -> logging.Logger:
     os.makedirs(output_dir, exist_ok=True)
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
+    # TextGrad configures its own logger at INFO and emits one line per model
+    # forward pass, which overwhelms train/eval logs without adding much signal.
+    textgrad_logger = logging.getLogger("textgrad")
+    textgrad_logger.setLevel(logging.WARNING)
+    textgrad_logger.propagate = False
     if not logger.handlers:
         fh = logging.FileHandler(os.path.join(output_dir, f"{name}.log"))
         fh.setLevel(logging.INFO)

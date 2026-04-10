@@ -9,6 +9,95 @@ from typing import Any, Dict, Optional
 
 
 EXPERIMENT_PROFILES: Dict[str, Dict[str, Any]] = {
+    "paper_anchor_hh_rlhf_qwen25_t2": {
+        "description": (
+            "Paper-anchor-compatible hh_rlhf comparison using "
+            "Qwen2.5-7B-Instruct, N=5, T=2, seed=42, and max_new_tokens=2048."
+        ),
+        "paper_anchor_reference": {
+            "dataset": "hh_rlhf",
+            "split": "hh_rlhf_eval_300",
+            "topology": "decentralized_mad",
+            "debater_model": "Qwen/Qwen2.5-7B-Instruct",
+            "n_agents": 5,
+            "n_rounds": 2,
+            "seed": 42,
+            "temperature": 1.0,
+            "top_p": 0.9,
+            "max_new_tokens": 2048,
+        },
+        "baseline_definition": "t0_mean_over_all_agents_from_single_n5_t2_seed42_run",
+        "tgmad_deviations_from_paper": [
+            "single_agent_accuracy uses the round-0 mean over all agents from one N=5, T=2, seed=42 run",
+            "max_new_tokens is 2048 for all methods instead of the paper's 512",
+            "TG-MAD uses per-agent system-prompt optimization instead of a shared prompt",
+            "TG-MAD uses Qwen/Qwen3-30B-A3B-Instruct-2507 as evaluator/optimizer",
+        ],
+        "stages": {
+            "generate_history": {
+                "dataset": "hh_rlhf",
+                "debater_model": "hosted_vllm/Qwen/Qwen2.5-7B-Instruct",
+                "n_agents": 5,
+                "n_rounds": 2,
+                "max_new_tokens": 2048,
+                "seed": 42,
+            },
+            "train": {
+                "dataset": "hh_rlhf",
+                "debater_model": "hosted_vllm/Qwen/Qwen2.5-7B-Instruct",
+                "evaluator_model": "hosted_vllm/Qwen/Qwen3-30B-A3B-Instruct-2507",
+                "n_agents": 5,
+                "n_rounds": 2,
+                "max_new_tokens": 2048,
+                "evaluator_max_new_tokens": 2048,
+                "seed": 42,
+            },
+            "eval": {
+                "dataset": "hh_rlhf",
+                "debater_model": "hosted_vllm/Qwen/Qwen2.5-7B-Instruct",
+                "n_agents": 5,
+                "n_rounds": 2,
+                "max_new_tokens": 2048,
+                "seed": 42,
+            },
+            "eval_sweep": {
+                "dataset": "hh_rlhf",
+                "debater_model": "hosted_vllm/Qwen/Qwen2.5-7B-Instruct",
+                "n_agents": 5,
+                "n_rounds": 2,
+                "max_new_tokens": 2048,
+                "seed": 42,
+            },
+        },
+        "env_defaults": {
+            "baseline": {
+                "DATASET": "hh_rlhf",
+                "DEBATER_MODEL_NAME": "Qwen/Qwen2.5-7B-Instruct",
+                "N_AGENTS": "5",
+                "N_ROUNDS": "2",
+                "MAX_NEW_TOKENS": "2048",
+                "SEED": "42",
+            },
+            "train": {
+                "DATASET": "hh_rlhf",
+                "DEBATER_MODEL_NAME": "Qwen/Qwen2.5-7B-Instruct",
+                "EVALUATOR_MODEL_NAME": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+                "TRAIN_N_AGENTS": "5",
+                "TRAIN_N_ROUNDS": "2",
+                "MAX_NEW_TOKENS": "2048",
+                "EVALUATOR_MAX_NEW_TOKENS": "2048",
+                "TRAIN_SEED": "42",
+            },
+            "eval": {
+                "DATASET": "hh_rlhf",
+                "DEBATER_MODEL_NAME": "Qwen/Qwen2.5-7B-Instruct",
+                "EVAL_N_AGENTS": "5",
+                "EVAL_N_ROUNDS": "2",
+                "MAX_NEW_TOKENS": "2048",
+                "EVAL_SEED": "42",
+            },
+        },
+    },
     "paper_anchor_formal_logic_qwen25_t2": {
         "description": (
             "Paper-anchor-compatible Formal Logic comparison using "

@@ -19,6 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from tg_mad.experiment_profiles import apply_process_env_profile_defaults
+from tg_mad.serving_profiles import apply_process_env_serving_profile_defaults
 
 
 def env_str(name: str, default: str) -> str:
@@ -52,6 +53,120 @@ def env_optional_int(name: str) -> Optional[int]:
     if value is None:
         return None
     return int(value)
+
+
+def set_env_override(name: str, value: Optional[object]) -> None:
+    if value is None:
+        return
+    os.environ[name] = str(value)
+
+
+def set_env_flag(name: str, enabled: bool) -> None:
+    if enabled:
+        os.environ[name] = "1"
+
+
+_LEGACY_UNSUPERVISED_ARGS = (
+    "--unsupervised",
+    "--save_traces",
+    "--save-traces",
+    "--trace_output_dir",
+    "--trace-output-dir",
+)
+_LEGACY_UNSUPERVISED_ENVS = (
+    "UNSUPERVISED",
+    "SAVE_TRACES",
+    "TRACE_OUTPUT_DIR",
+)
+
+
+def reject_removed_unsupervised_support(argv: Optional[List[str]] = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    detected_args = [
+        arg for arg in argv
+        if arg in _LEGACY_UNSUPERVISED_ARGS
+        or any(arg.startswith(f"{flag}=") for flag in _LEGACY_UNSUPERVISED_ARGS)
+    ]
+    detected_envs = [
+        name for name in _LEGACY_UNSUPERVISED_ENVS
+        if name in os.environ and os.environ[name] != ""
+    ]
+    if not detected_args and not detected_envs:
+        return
+
+    stale_inputs = detected_args + detected_envs
+    details = ", ".join(stale_inputs)
+    raise SystemExit(
+        "Unsupervised TG-MAD support has been removed. "
+        f"Delete these obsolete inputs and rerun: {details}."
+    )
+
+
+def apply_cli_overrides(args: argparse.Namespace) -> None:
+    """Map concise user-facing CLI options onto the existing env-based plumbing."""
+    set_env_override("EXPERIMENT_PROFILE", args.experiment_profile)
+    set_env_override("SERVING_PROFILE", args.serving_profile)
+    set_env_override("DATASET", args.dataset)
+    set_env_override("OUTPUT_DIR", args.output_dir)
+    set_env_override("DEBATER_MODEL_NAME", args.debater_model_name)
+    set_env_override("EVALUATOR_MODEL_NAME", args.evaluator_model_name)
+    set_env_override("MAX_NEW_TOKENS", args.max_new_tokens)
+    set_env_override("DATA_DIR", args.data_dir)
+    set_env_override("EXISTING_DATA", args.existing_data)
+    set_env_override("TRAIN_EXISTING_DATA", args.train_existing_data)
+    set_env_override("EVAL_EXISTING_DATA", args.eval_existing_data)
+    set_env_override("TEXT_HISTORY_DIR", args.text_history_dir)
+
+    set_env_flag("ALLOW_FAILED_GENERATIONS", args.allow_failed_generations)
+
+    if args.no_save_text_history:
+        os.environ["SAVE_TEXT_HISTORY"] = "0"
+
+    if args.mode == "train":
+        set_env_override("TRAIN_SIZE", args.train_size or args.data_size)
+        set_env_override("TRAIN_BATCH_SIZE", args.batch_size)
+        set_env_override("TRAIN_NUM_EPOCHS", args.num_epochs)
+        set_env_override("TRAIN_N_AGENTS", args.n_agents)
+        set_env_override("TRAIN_N_ROUNDS", args.n_rounds)
+        set_env_override("EVALUATOR_MAX_NEW_TOKENS", args.evaluator_max_new_tokens)
+        set_env_override("TRAIN_SEED", args.seed)
+        set_env_override("PROMPT_HISTORY_FILE", args.prompt_history)
+    else:
+        set_env_override("EVAL_MAX_TEST_SAMPLES", args.max_test_samples or args.data_size)
+        set_env_override("EVAL_N_AGENTS", args.n_agents)
+        set_env_override("EVAL_N_ROUNDS", args.n_rounds)
+        set_env_override("EVAL_SEED", args.seed)
+        set_env_override("PROMPT_HISTORY_PATH", args.prompt_history)
+        set_env_override("EVAL_PROMPT_INDEX", args.prompt_index)
+
+
+def print_experiment_settings(*, stage: str) -> None:
+    if stage == "train":
+        settings = {
+            "dataset": env_str("DATASET", "hh_rlhf"),
+            "debater_model": env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
+            "evaluator_model": env_str("EVALUATOR_MODEL_NAME", "Qwen/Qwen3-8B"),
+            "train_size": env_int("TRAIN_SIZE", 10),
+            "batch_size": env_int("TRAIN_BATCH_SIZE", 2),
+            "num_epochs": env_int("TRAIN_NUM_EPOCHS", 2),
+            "n_agents": env_int("TRAIN_N_AGENTS", 3),
+            "n_rounds": env_int("TRAIN_N_ROUNDS", 3),
+            "max_new_tokens": env_int("MAX_NEW_TOKENS", 512),
+        }
+    else:
+        settings = {
+            "dataset": env_str("DATASET", "hh_rlhf"),
+            "debater_model": env_str("DEBATER_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
+            "max_test_samples": env_optional("EVAL_MAX_TEST_SAMPLES") or "<all>",
+            "n_agents": env_int("EVAL_N_AGENTS", 3),
+            "n_rounds": env_int("EVAL_N_ROUNDS", 3),
+            "max_new_tokens": env_int("MAX_NEW_TOKENS", 512),
+            "prompt_history": env_str("PROMPT_HISTORY_PATH", "<unset>"),
+        }
+    summary = ", ".join(f"{key}={value}" for key, value in settings.items())
+    print(f"Experiment settings: {summary}", flush=True)
 
 
 def append_optional_arg(args: List[str], flag: str, value: Optional[str]) -> None:
@@ -486,13 +601,14 @@ def start_vllm_server(
     disable_custom_all_reduce: bool,
     enforce_eager: bool,
     extra_args: Optional[str],
+    skip_kernel_warmup: bool,
     log_path: Path,
     dry_run: bool,
 ) -> Optional[ServerProcess]:
     command = [
         sys.executable,
         "-m",
-        "vllm.entrypoints.openai.api_server",
+        "tg_mad.vllm_api_server",
         "--host",
         host,
         "--port",
@@ -543,6 +659,9 @@ def start_vllm_server(
     handle = log_path.open("w")
     env = base_env.copy()
     env["CUDA_VISIBLE_DEVICES"] = visible_devices
+    if skip_kernel_warmup:
+        env["TG_MAD_SKIP_VLLM_KERNEL_WARMUP"] = "1"
+        env.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "fork")
     process = subprocess.Popen(
         command,
         cwd=repo_root,
@@ -590,6 +709,7 @@ def run_command(command: List[str], *, cwd: Path, env: Dict[str, str], dry_run: 
 
 def run_train(dry_run: bool) -> None:
     apply_process_env_profile_defaults(stage="train")
+    apply_process_env_serving_profile_defaults(stage="train")
     enforce_per_agent_prompt_mode()
     repo_root = Path(env_str("REPO_ROOT", str(Path(__file__).resolve().parents[1]))).resolve()
     output_dir = Path(env_str("OUTPUT_DIR", "out/tg_mad")).resolve()
@@ -686,12 +806,15 @@ def run_train(dry_run: bool) -> None:
     print("=== TG-MAD Training ===", flush=True)
     if env_optional("EXPERIMENT_PROFILE"):
         print(f"Experiment profile: {env_optional('EXPERIMENT_PROFILE')}", flush=True)
+    if env_optional("SERVING_PROFILE"):
+        print(f"Serving profile: {env_optional('SERVING_PROFILE')}", flush=True)
     print(f"Node: {env_str('SLURMD_NODENAME', os.uname().nodename)}", flush=True)
     print(f"Repo: {repo_root}", flush=True)
     print(
         f"Allocated job CUDA_VISIBLE_DEVICES: {job_visible_devices or '<unset>'}",
         flush=True,
     )
+    print_experiment_settings(stage="train")
 
     explicit_debater_url = env_optional("DEBATER_BASE_URL")
     explicit_evaluator_url = env_optional("EVALUATOR_BASE_URL")
@@ -746,6 +869,7 @@ def run_train(dry_run: bool) -> None:
                 ),
                 enforce_eager=env_bool("DEBATER_ENFORCE_EAGER", True),
                 extra_args=env_optional("DEBATER_VLLM_EXTRA_ARGS"),
+                skip_kernel_warmup=env_bool("DEBATER_SKIP_KERNEL_WARMUP", False),
                 log_path=output_dir / "vllm_debater_train.log",
                 dry_run=dry_run,
             )
@@ -780,6 +904,7 @@ def run_train(dry_run: bool) -> None:
                 ),
                 enforce_eager=env_bool("EVALUATOR_ENFORCE_EAGER", True),
                 extra_args=env_optional("EVALUATOR_VLLM_EXTRA_ARGS"),
+                skip_kernel_warmup=env_bool("EVALUATOR_SKIP_KERNEL_WARMUP", False),
                 log_path=output_dir / "vllm_evaluator_train.log",
                 dry_run=dry_run,
             )
@@ -914,6 +1039,7 @@ def run_train(dry_run: bool) -> None:
 
 def run_eval(dry_run: bool) -> None:
     apply_process_env_profile_defaults(stage="eval")
+    apply_process_env_serving_profile_defaults(stage="eval")
     repo_root = Path(env_str("REPO_ROOT", str(Path(__file__).resolve().parents[1]))).resolve()
     output_dir = Path(env_str("OUTPUT_DIR", "out/tg_mad")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -955,12 +1081,15 @@ def run_eval(dry_run: bool) -> None:
     print("=== TG-MAD Evaluation ===", flush=True)
     if env_optional("EXPERIMENT_PROFILE"):
         print(f"Experiment profile: {env_optional('EXPERIMENT_PROFILE')}", flush=True)
+    if env_optional("SERVING_PROFILE"):
+        print(f"Serving profile: {env_optional('SERVING_PROFILE')}", flush=True)
     print(f"Node: {env_str('SLURMD_NODENAME', os.uname().nodename)}", flush=True)
     print(f"Repo: {repo_root}", flush=True)
     print(
         f"Allocated job CUDA_VISIBLE_DEVICES: {job_visible_devices or '<unset>'}",
         flush=True,
     )
+    print_experiment_settings(stage="eval")
 
     explicit_debater_url = env_optional("DEBATER_BASE_URL")
     debater_port = resolve_local_server_port(
@@ -1002,6 +1131,7 @@ def run_eval(dry_run: bool) -> None:
                 ),
                 enforce_eager=env_bool("DEBATER_ENFORCE_EAGER", True),
                 extra_args=env_optional("DEBATER_VLLM_EXTRA_ARGS"),
+                skip_kernel_warmup=env_bool("DEBATER_SKIP_KERNEL_WARMUP", False),
                 log_path=output_dir / "vllm_debater_eval.log",
                 dry_run=dry_run,
             )
@@ -1105,6 +1235,7 @@ def run_eval(dry_run: bool) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    reject_removed_unsupervised_support()
     parser = argparse.ArgumentParser(description="TG-MAD SLURM job runner")
     parser.add_argument("mode", choices=["train", "eval"])
     parser.add_argument(
@@ -1112,11 +1243,86 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the launch plan and commands without starting servers or running train/eval.",
     )
+    common = parser.add_argument_group("Common Experiment Settings")
+    common.add_argument("--experiment-profile", help="Named experiment profile for dataset/model defaults.")
+    common.add_argument("--serving-profile", help="Named serving profile for local vLLM stability defaults.")
+    common.add_argument("--dataset", "--data", dest="dataset", help="Dataset name, e.g. hh_rlhf or formal_logic.")
+    common.add_argument(
+        "--debater-model",
+        "--debater-model-name",
+        "--model",
+        dest="debater_model_name",
+        help="Debater model name, matching the simpler src/main.py-style --model flag.",
+    )
+    common.add_argument(
+        "--evaluator-model",
+        "--evaluator-model-name",
+        dest="evaluator_model_name",
+        help="Evaluator/optimizer model name for TG-MAD training.",
+    )
+    common.add_argument(
+        "--n-agents",
+        "--num_agents",
+        dest="n_agents",
+        type=int,
+        help="Number of debate agents, matching src/main.py-style --num_agents.",
+    )
+    common.add_argument(
+        "--n-rounds",
+        "--debate_rounds",
+        dest="n_rounds",
+        type=int,
+        help="Number of debate rounds, matching src/main.py-style --debate_rounds.",
+    )
+    common.add_argument(
+        "--max-new-tokens",
+        "--max_new_tokens",
+        dest="max_new_tokens",
+        type=int,
+        help="Generation budget for each debater response.",
+    )
+    common.add_argument(
+        "--data-size",
+        "--data_size",
+        dest="data_size",
+        type=int,
+        help="Generic sample count, matching src/main.py-style --data_size. Maps to train_size or eval sample count by mode.",
+    )
+    common.add_argument("--seed", type=int, help="Stage seed (TRAIN_SEED or EVAL_SEED).")
+    common.add_argument("--output-dir", help="Artifact output directory.")
+    common.add_argument("--data-dir", help="Optional dataset cache/override directory.")
+    common.add_argument("--existing-data", help="Existing history file used for both train/eval when applicable.")
+    common.add_argument("--train-existing-data", help="Existing history file for the train split.")
+    common.add_argument("--eval-existing-data", help="Existing history file for the eval/test split.")
+    common.add_argument("--text-history-dir", help="Optional directory for saved debate text history.")
+    common.add_argument("--prompt-history", help="Prompt history path (train output override or eval input).")
+    common.add_argument("--allow-failed-generations", action="store_true", help="Keep running when some generations fail.")
+    common.add_argument("--no-save-text-history", action="store_true", help="Disable saved text history artifacts.")
+
+    train_group = parser.add_argument_group("Train-Only Settings")
+    train_group.add_argument(
+        "--train-size",
+        dest="train_size",
+        type=int,
+        help="Training sample count. Overrides --data-size when both are provided.",
+    )
+    train_group.add_argument("--batch-size", type=int, help="Training batch size.")
+    train_group.add_argument("--num-epochs", type=int, help="Training epochs.")
+    train_group.add_argument("--evaluator-max-new-tokens", type=int, help="Generation budget for evaluator feedback.")
+
+    eval_group = parser.add_argument_group("Eval-Only Settings")
+    eval_group.add_argument(
+        "--max-test-samples",
+        type=int,
+        help="Maximum number of eval samples to score.",
+    )
+    eval_group.add_argument("--prompt-index", type=int, help="Prompt checkpoint index to evaluate.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    apply_cli_overrides(args)
     if args.mode == "train":
         run_train(dry_run=args.dry_run)
     else:

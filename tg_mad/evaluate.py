@@ -217,7 +217,7 @@ def build_eval_text_history_record(
     t0_answers = existing["0"].get("final_answers", [])
     t0_parsed = [normalize_stored_answer(answer, dataset) for answer in t0_answers]
     t0_majority_vote = normalize_stored_answer(existing["0"].get("debate_answer"), dataset)
-    final_round_key = str(n_rounds)
+    final_round_key = _resolve_available_final_round(existing, requested_rounds=n_rounds)
     standard_mad_final = existing.get(final_round_key, {})
 
     return {
@@ -241,7 +241,7 @@ def build_eval_text_history_record(
             "t0_parsed": t0_parsed,
             "t0_majority_vote": t0_majority_vote,
             "t0_majority_correct": answer_is_correct(t0_majority_vote, gt, dataset=dataset),
-            "standard_mad_round": n_rounds,
+            "standard_mad_round": int(final_round_key),
             "standard_mad_final_answer": standard_mad_final.get("debate_answer"),
             "standard_mad_final_correct": standard_mad_final.get("debate_answer_iscorr", False),
         },
@@ -295,6 +295,23 @@ def _load_eval_samples(args, split_info):
 # ─── Baseline metrics from existing JSONL ───────────────────────────────────
 
 
+def _resolve_available_final_round(record: dict, *, requested_rounds: int) -> str:
+    """Return the latest available numeric round key up to the requested round.
+
+    Older baseline histories may contain fewer debate rounds than the current
+    evaluation configuration. In that case we compare against the latest round
+    that actually exists in the stored history instead of crashing.
+    """
+    available_rounds = sorted(int(key) for key in record if key.isdigit())
+    if not available_rounds:
+        raise ValueError("History record does not contain any numeric round keys.")
+
+    eligible_rounds = [round_idx for round_idx in available_rounds if round_idx <= requested_rounds]
+    if eligible_rounds:
+        return str(eligible_rounds[-1])
+    return str(available_rounds[-1])
+
+
 def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
     """Compute baseline metrics from existing JSONL data.
 
@@ -343,7 +360,7 @@ def compute_baselines(test_samples, *, dataset: str, n_rounds=N_ROUNDS):
             mv_correct += 1
 
         # === Standard MAD (final round debate_answer) ===
-        final_round = str(n_rounds)
+        final_round = _resolve_available_final_round(existing, requested_rounds=n_rounds)
         mad_is_correct = existing[final_round].get("debate_answer_iscorr", False)
         if mad_is_correct:
             mad_correct += 1
@@ -420,7 +437,7 @@ def compute_icl_baselines(
 
     for record, gt in zip(icl_existing_data, ground_truths):
         # ICL-MAD final accuracy
-        final_round = str(n_rounds)
+        final_round = _resolve_available_final_round(record, requested_rounds=n_rounds)
         mad_is_correct = record[final_round].get("debate_answer_iscorr", False)
         if mad_is_correct:
             mad_correct += 1
@@ -521,7 +538,8 @@ def evaluate_tgmad(
         )
 
         # TG-MAD accuracy
-        if result["final_correct"]:
+        sample_correct = bool(result["final_correct"])
+        if sample_correct:
             tgmad_correct += 1
 
         # MV baseline from existing data for correction/subversion
@@ -559,11 +577,13 @@ def evaluate_tgmad(
                 ),
             )
 
-        if (si + 1) % 50 == 0:
-            logger.info(
-                f"    Progress: {tgmad_correct}/{si+1} correct "
-                f"({tgmad_correct/(si+1):.2%})"
-            )
+        logger.info(
+            "    Completed %s/%s | sample_correct=%s | running_average_accuracy=%.2f%%",
+            si + 1,
+            total,
+            sample_correct,
+            100 * tgmad_correct / (si + 1),
+        )
 
     results = {
         "tgmad_accuracy": tgmad_correct / total if total else 0,

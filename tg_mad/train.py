@@ -3,7 +3,9 @@
 import argparse
 import os
 import random
+import sys
 import time
+from typing import List
 
 import textgrad as tg
 
@@ -61,7 +63,43 @@ def _display_model_name(model_name):
     return model_name.removeprefix("hosted_vllm/")
 
 
+_LEGACY_UNSUPERVISED_ARGS = (
+    "--unsupervised",
+    "--save_traces",
+    "--save-traces",
+    "--trace_output_dir",
+    "--trace-output-dir",
+)
+_LEGACY_UNSUPERVISED_ENVS = (
+    "UNSUPERVISED",
+    "SAVE_TRACES",
+    "TRACE_OUTPUT_DIR",
+)
+
+
+def _reject_removed_unsupervised_support() -> None:
+    detected_args = [
+        arg for arg in sys.argv[1:]
+        if arg in _LEGACY_UNSUPERVISED_ARGS
+        or any(arg.startswith(f"{flag}=") for flag in _LEGACY_UNSUPERVISED_ARGS)
+    ]
+    detected_envs = [
+        name for name in _LEGACY_UNSUPERVISED_ENVS
+        if name in os.environ and os.environ[name] != ""
+    ]
+    if not detected_args and not detected_envs:
+        return
+
+    stale_inputs = detected_args + detected_envs
+    details = ", ".join(stale_inputs)
+    raise SystemExit(
+        "Unsupervised TG-MAD support has been removed. "
+        f"Delete these obsolete inputs and rerun: {details}."
+    )
+
+
 def parse_args():
+    _reject_removed_unsupervised_support()
     parser = argparse.ArgumentParser(description="TG-MAD Training")
     parser.add_argument("--debater_base_url", type=str, default=None)
     parser.add_argument("--debater_model", type=str, default=None)
@@ -473,6 +511,7 @@ def train(args):
                 transcript_text = render_transcript_text(
                     sample["question"], result["rounds"]
                 )
+
                 evaluate_fn = create_per_agent_evaluator(
                     ground_truth=sample["ground_truth"],
                     t0_parsed=result["t0_parsed"],
@@ -516,6 +555,7 @@ def train(args):
             logger.info(
                 f"  Batch accuracy: {batch_correct}/{len(batch)} = {batch_accuracy:.2%}"
             )
+
             logger.info("  Running per-agent optimizer steps...")
             for i, opt in enumerate(optimizers):
                 if args.skip_failed_optimizer_steps:
